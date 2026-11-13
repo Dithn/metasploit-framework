@@ -1,3 +1,5 @@
+require 'msf/ui/console/module_option_validation'
+
 module Msf
   module Ui
     module Console
@@ -7,16 +9,31 @@ module Msf
       #
       ###
       module ModuleOptionTabCompletion
+        include Msf::Ui::Console::ModuleOptionValidation
+
         #
         # Tab completion for datastore names
         #
+        # @param datastore [Msf::DataStore]
+        # @param _str [String] the string currently being typed before tab was hit
+        # @param _words [Array<String>] the previously completed words on the command
+        #   line. `_words` is always at least 1 when tab completion has reached this
+        #   stage since the command itself has been completed.
+        def tab_complete_datastore_names(datastore, _str, _words)
+          datastore_option_names(datastore)
+        end
+
+        #
+        # Tab completion for a module's datastore names
+        #
+        # @param mod [Msf::Module]
         # @param str [String] the string currently being typed before tab was hit
         # @param words [Array<String>] the previously completed words on the command
         #   line. `words` is always at least 1 when tab completion has reached this
         #   stage since the command itself has been completed.
-        def tab_complete_datastore_names(mod, _str, _words)
+        def tab_complete_module_datastore_names(mod, str, words)
           datastore = mod ? mod.datastore : framework.datastore
-          keys = datastore.keys
+          keys = tab_complete_datastore_names(datastore, str, words)
 
           if mod
             keys = keys.delete_if do |name|
@@ -52,57 +69,8 @@ module Msf
         #
         # Provide tab completion for name values
         #
-        def tab_complete_option_names(mod, str, words)
-          res = tab_complete_datastore_names(mod, str, words) || [ ]
-          # There needs to be a better way to register global options, but for
-          # now all we have is an ad-hoc list of opts that the shell treats
-          # specially.
-          res += %w[
-            ConsoleLogging
-            LogLevel
-            MinimumRank
-            SessionLogging
-            TimestampOutput
-            Prompt
-            PromptChar
-            PromptTimeFormat
-            MeterpreterPrompt
-          ]
-          if !mod
-            return res
-          end
-
-          mod.options.sorted.each do |e|
-            name, _opt = e
-            next unless Msf::OptCondition.show_option(mod, _opt)
-
-            res << name
-          end
-          # Exploits provide these three default options
-          if mod.exploit?
-            res << 'PAYLOAD'
-            res << 'NOP'
-            res << 'TARGET'
-            res << 'ENCODER'
-          elsif mod.evasion?
-            res << 'PAYLOAD'
-            res << 'TARGET'
-            res << 'ENCODER'
-          elsif mod.payload?
-            res << 'ENCODER'
-          end
-          if mod.is_a?(Msf::Module::HasActions)
-            res << 'ACTION'
-          end
-          if ((mod.exploit? || mod.evasion?) && mod.datastore['PAYLOAD'])
-            p = framework.payloads.create(mod.datastore['PAYLOAD'])
-            if p
-              p.options.sorted.each do |e|
-                name, _opt = e
-                res << name
-              end
-            end
-          end
+        def tab_complete_option_names(mod, str, words, include_aliases: false)
+          res = valid_datastore_option_names(mod, include_aliases: include_aliases, active_only: true)
           unless str.blank?
             res = res.select { |term| term.upcase.start_with?(str.upcase) }
             res = res.map do |term|
@@ -115,13 +83,18 @@ module Msf
               end
             end
           end
-          return res
+
+          return res.sort
         end
 
         #
         # Provide tab completion for option values
         #
         def tab_complete_option_values(mod, str, words, opt:)
+          if words.last.casecmp?('SessionTlvLogging')
+            return %w[console true false file:<file>]
+          end
+
           res = []
           # With no module, we have nothing to complete
           if !mod
@@ -190,17 +163,23 @@ module Msf
                 res += tab_complete_source_interface(o)
               end
             end
-          when Msf::OptAddressRange
+          when Msf::OptAddressRange, Msf::OptRhosts
             case str
             when /^file:(.*)/
               files = tab_complete_filenames(Regexp.last_match(1), words)
               res += files.map { |f| 'file:' + f } if files
-            when %r{/$}
-              res << str + '32'
-              res << str + '24'
-              res << str + '16'
-            when /\-$/
-              res << str + str[0, str.length - 1]
+            when %r{^(.*)/\d{0,2}$}
+              left = Regexp.last_match(1)
+              if Rex::Socket.is_ipv4?(left)
+                res << left + '/32'
+                res << left + '/24'
+                res << left + '/16'
+              end
+            when /^(.*)\-$/
+              left = Regexp.last_match(1)
+              if Rex::Socket.is_ipv4?(left)
+                res << str + str[0, str.length - 1]
+              end
             else
               option_values_target_addrs(mod).each do |addr|
                 res << addr
@@ -232,9 +211,9 @@ module Msf
           return res
         end
 
-        # XXX: We repurpose OptAddressLocal#interfaces, so we can't put this in Rex
+        # XXX: We repurpose OptAddressRoutable#interfaces, so we can't put this in Rex
         def tab_complete_source_interface(o)
-          return [] unless o.is_a?(Msf::OptAddressLocal)
+          return [] unless o.is_a?(Msf::OptAddressRoutable)
 
           o.interfaces
         end
@@ -291,14 +270,14 @@ module Msf
         # Provide valid nops options for the current exploit
         #
         def option_values_nops
-          framework.nops.map { |refname, _mod| refname }
+          framework.nops.module_refnames
         end
 
         #
         # Provide valid encoders options for the current exploit or payload
         #
         def option_values_encoders
-          framework.encoders.map { |refname, _mod| refname }
+          framework.encoders.module_refnames
         end
 
         #

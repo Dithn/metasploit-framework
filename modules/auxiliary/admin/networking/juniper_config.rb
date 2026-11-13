@@ -18,12 +18,16 @@ class MetasploitModule < Msf::Auxiliary
         },
         'License' => MSF_LICENSE,
         'Author' => ['h00die'],
-        'Actions' =>
-          [
-            ['JUNOS', { 'Description' => 'Import JunOS Config File' }],
-            ['SCREENOS', { 'Description' => 'Import ScreenOS Config File' }],
-          ],
-        'DefaultAction' => 'JUNOS'
+        'Actions' => [
+          ['JUNOS', { 'Description' => 'Import JunOS Config File' }],
+          ['SCREENOS', { 'Description' => 'Import ScreenOS Config File' }],
+        ],
+        'DefaultAction' => 'JUNOS',
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [],
+          'Reliability' => []
+        }
       )
     )
 

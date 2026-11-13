@@ -5,15 +5,23 @@
 
 class MetasploitModule < Msf::Post
 
-  def initialize(info={})
-    super( update_info( info,
-      'Name'          => 'Multi Generic Operating System Session Close',
-      'Description'   => %q{ This module closes the specified session. This can be useful as a finisher for automation tasks },
-      'License'       => MSF_LICENSE,
-      'Author'        => [ 'hdm' ],
-      'Platform'      => %w{ linux osx unix win },
-      'SessionTypes'  => [ 'shell', 'meterpreter' ]
-    ))
+  def initialize(info = {})
+    super(
+      update_info(
+        info,
+        'Name' => 'Multi Generic Operating System Session Close',
+        'Description' => %q{This module closes the specified session. This can be useful as a finisher for automation tasks.},
+        'License' => MSF_LICENSE,
+        'Author' => [ 'hdm' ],
+        'Platform' => %w[linux osx unix win],
+        'SessionTypes' => [ 'shell', 'meterpreter' ],
+        'Notes' => {
+          'Stability' => [CRASH_SERVICE_DOWN],
+          'SideEffects' => [],
+          'Reliability' => []
+        }
+      )
+    )
   end
 
   def run

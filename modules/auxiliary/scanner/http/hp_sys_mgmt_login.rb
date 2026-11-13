@@ -12,32 +12,37 @@ class MetasploitModule < Msf::Auxiliary
   include Msf::Auxiliary::AuthBrute
   include Msf::Auxiliary::Scanner
 
-  def initialize(info={})
-    super(update_info(info,
-      'Name'           => "HP System Management Homepage Login Utility",
-      'Description'    => %q{
-        This module attempts to login to HP System Management Homepage using host
-        operating system authentication.
-      },
-      'License'        => MSF_LICENSE,
-      'Author'         => [ 'sinn3r' ],
-      'DefaultOptions' =>
-        {
+  def initialize(info = {})
+    super(
+      update_info(
+        info,
+        'Name' => "HP System Management Homepage Login Utility",
+        'Description' => %q{
+          This module attempts to login to HP System Management Homepage using host
+          operating system authentication.
+        },
+        'License' => MSF_LICENSE,
+        'Author' => [ 'sinn3r' ],
+        'DefaultOptions' => {
           'SSL' => true,
           'RPORT' => 2381,
           'USERPASS_FILE' => File.join(Msf::Config.data_directory, "wordlists", "http_default_userpass.txt"),
           'USER_FILE' => File.join(Msf::Config.data_directory, "wordlists", "unix_users.txt"),
           'PASS_FILE' => File.join(Msf::Config.data_directory, "wordlists", "unix_passwords.txt")
+        },
+        'Notes' => {
+          'Reliability' => UNKNOWN_RELIABILITY,
+          'Stability' => UNKNOWN_STABILITY,
+          'SideEffects' => UNKNOWN_SIDE_EFFECTS
         }
-    ))
+      )
+    )
 
     register_advanced_options([
       OptString.new('LOGIN_URL', [true, 'The URL that handles the login process', '/proxy/ssllogin']),
       OptString.new('CPQLOGIN', [true, 'The homepage of the login', '/cpqlogin.htm']),
       OptString.new('LOGIN_REDIRECT', [true, 'The URL to redirect to', '/cpqlogin'])
     ])
-
-    deregister_options('PASSWORD_SPRAY')
   end
 
   def get_version(res)
@@ -67,34 +72,30 @@ class MetasploitModule < Msf::Auxiliary
 
   def anonymous_access?(res)
     return true if res and res.body =~ /username = "hpsmh_anonymous"/
+
     false
   end
 
   def init_loginscanner(ip)
-    @cred_collection = Metasploit::Framework::CredentialCollection.new(
-      blank_passwords: datastore['BLANK_PASSWORDS'],
-      pass_file:       datastore['PASS_FILE'],
-      password:        datastore['HttpPassword'],
-      user_file:       datastore['USER_FILE'],
-      userpass_file:   datastore['USERPASS_FILE'],
-      username:        datastore['HttpUsername'],
-      user_as_pass:    datastore['USER_AS_PASS']
+    @cred_collection = build_credential_collection(
+      username: datastore['HttpUsername'],
+      password: datastore['HttpPassword']
     )
 
     @scanner = Metasploit::Framework::LoginScanner::Smh.new(
       configure_http_login_scanner(
-        uri:                datastore['LOGIN_URL'],
-        cred_details:       @cred_collection,
-        stop_on_success:    datastore['STOP_ON_SUCCESS'],
-        bruteforce_speed:   datastore['BRUTEFORCE_SPEED'],
+        uri: datastore['LOGIN_URL'],
+        cred_details: @cred_collection,
+        stop_on_success: datastore['STOP_ON_SUCCESS'],
+        bruteforce_speed: datastore['BRUTEFORCE_SPEED'],
         connection_timeout: 5,
-        http_username:      datastore['HttpUsername'],
-        http_password:      datastore['HttpPassword']
+        http_username: datastore['HttpUsername'],
+        http_password: datastore['HttpPassword']
       )
     )
   end
 
- def do_report(ip, port, result)
+  def do_report(ip, port, result)
     service_data = {
       address: ip,
       port: port,
@@ -134,14 +135,14 @@ class MetasploitModule < Msf::Auxiliary
           print_brute :level => :verror, :ip => ip, :msg => "Could not connect"
         end
         invalidate_login(
-            address: ip,
-            port: rport,
-            protocol: 'tcp',
-            public: result.credential.public,
-            private: result.credential.private,
-            realm_key: result.credential.realm_key,
-            realm_value: result.credential.realm,
-            status: result.status
+          address: ip,
+          port: rport,
+          protocol: 'tcp',
+          public: result.credential.public,
+          private: result.credential.private,
+          realm_key: result.credential.realm_key,
+          realm_value: result.credential.realm,
+          status: result.status
         )
         :abort
       when Metasploit::Model::Login::Status::INCORRECT
@@ -149,19 +150,18 @@ class MetasploitModule < Msf::Auxiliary
           print_brute :level => :verror, :ip => ip, :msg => "Failed: '#{result.credential}'"
         end
         invalidate_login(
-            address: ip,
-            port: rport,
-            protocol: 'tcp',
-            public: result.credential.public,
-            private: result.credential.private,
-            realm_key: result.credential.realm_key,
-            realm_value: result.credential.realm,
-            status: result.status
+          address: ip,
+          port: rport,
+          protocol: 'tcp',
+          public: result.credential.public,
+          private: result.credential.private,
+          realm_key: result.credential.realm_key,
+          realm_value: result.credential.realm,
+          status: result.status
         )
       end
     end
   end
-
 
   def run_host(ip)
     res = send_request_cgi({
@@ -192,7 +192,7 @@ class MetasploitModule < Msf::Auxiliary
     report_note(
       :host => ip,
       :type => "system.name",
-      :data => sys_name
+      :data => { :system_name => sys_name }
     )
 
     if anonymous_access?(res)
@@ -204,4 +204,3 @@ class MetasploitModule < Msf::Auxiliary
     bruteforce(ip)
   end
 end
-

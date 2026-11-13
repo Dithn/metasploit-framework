@@ -886,7 +886,7 @@ class Def_windows_kernel32
       ["DWORD","dwNotifyFilter","in"],
       ])
 
-    dll.add_function( 'FindFirstFileA', 'DWORD',[
+    dll.add_function( 'FindFirstFileA', 'HANDLE',[
       ["PCHAR","lpFileName","in"],
       ["PBLOB","lpFindFileData","out"],
       ])
@@ -909,7 +909,7 @@ class Def_windows_kernel32
       ["DWORD","dwAdditionalFlags","in"],
       ])
 
-    dll.add_function( 'FindFirstFileW', 'DWORD',[
+    dll.add_function( 'FindFirstFileW', 'HANDLE',[
       ["PWCHAR","lpFileName","in"],
       ["PBLOB","lpFindFileData","out"],
       ])
@@ -2300,7 +2300,7 @@ class Def_windows_kernel32
       ["HANDLE","hResInfo","in"],
       ])
 
-    dll.add_function( 'LocalAlloc', 'DWORD',[
+    dll.add_function( 'LocalAlloc', 'HANDLE',[
       ["DWORD","uFlags","in"],
       ["DWORD","uBytes","in"],
       ])
@@ -2318,7 +2318,7 @@ class Def_windows_kernel32
       ["HANDLE","hMem","in"],
       ])
 
-    dll.add_function( 'LocalFree', 'DWORD',[
+    dll.add_function( 'LocalFree', 'HANDLE',[
       ["HANDLE","hMem","in"],
       ])
 

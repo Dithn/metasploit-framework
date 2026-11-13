@@ -1,5 +1,6 @@
 # -*- coding: binary -*-
 require 'openssl'
+require 'rex/post/meterpreter/command_mapper'
 
 module Rex
 module Post
@@ -10,6 +11,7 @@ module Meterpreter
 #
 PACKET_TYPE_REQUEST         = 0
 PACKET_TYPE_RESPONSE        = 1
+PACKET_TYPE_CONFIG          = 2
 PACKET_TYPE_PLAIN_REQUEST   = 10
 PACKET_TYPE_PLAIN_RESPONSE  = 11
 
@@ -90,20 +92,6 @@ TLV_TYPE_MIGRATE_STUB        = TLV_META_TYPE_RAW    | 411
 TLV_TYPE_LIB_LOADER_NAME     = TLV_META_TYPE_STRING | 412
 TLV_TYPE_LIB_LOADER_ORDINAL  = TLV_META_TYPE_UINT   | 413
 
-TLV_TYPE_TRANS_TYPE          = TLV_META_TYPE_UINT   | 430
-TLV_TYPE_TRANS_URL           = TLV_META_TYPE_STRING | 431
-TLV_TYPE_TRANS_UA            = TLV_META_TYPE_STRING | 432
-TLV_TYPE_TRANS_COMM_TIMEOUT  = TLV_META_TYPE_UINT   | 433
-TLV_TYPE_TRANS_SESSION_EXP   = TLV_META_TYPE_UINT   | 434
-TLV_TYPE_TRANS_CERT_HASH     = TLV_META_TYPE_RAW    | 435
-TLV_TYPE_TRANS_PROXY_HOST    = TLV_META_TYPE_STRING | 436
-TLV_TYPE_TRANS_PROXY_USER    = TLV_META_TYPE_STRING | 437
-TLV_TYPE_TRANS_PROXY_PASS    = TLV_META_TYPE_STRING | 438
-TLV_TYPE_TRANS_RETRY_TOTAL   = TLV_META_TYPE_UINT   | 439
-TLV_TYPE_TRANS_RETRY_WAIT    = TLV_META_TYPE_UINT   | 440
-TLV_TYPE_TRANS_HEADERS       = TLV_META_TYPE_STRING | 441
-TLV_TYPE_TRANS_GROUP         = TLV_META_TYPE_GROUP  | 442
-
 TLV_TYPE_MACHINE_ID          = TLV_META_TYPE_STRING | 460
 TLV_TYPE_UUID                = TLV_META_TYPE_RAW    | 461
 TLV_TYPE_SESSION_GUID        = TLV_META_TYPE_RAW    | 462
@@ -120,6 +108,49 @@ TLV_TYPE_PIVOT_ID              = TLV_META_TYPE_RAW    |  650
 TLV_TYPE_PIVOT_STAGE_DATA      = TLV_META_TYPE_RAW    |  651
 TLV_TYPE_PIVOT_NAMED_PIPE_NAME = TLV_META_TYPE_STRING |  653
 
+#
+# Configuration & C2 options
+#
+TLV_TYPE_SESSION_EXPIRY        = TLV_META_TYPE_UINT   | 700 # Session expiration time
+TLV_TYPE_EXITFUNC              = TLV_META_TYPE_UINT   | 701 # identifier of the exit function to use
+TLV_TYPE_DEBUG_LOG             = TLV_META_TYPE_STRING | 702 # path to write debug log
+TLV_TYPE_EXTENSION             = TLV_META_TYPE_GROUP  | 703 # Group containing extension info
+TLV_TYPE_C2                    = TLV_META_TYPE_GROUP  | 704 # a C2/transport grouping
+TLV_TYPE_C2_COMM_TIMEOUT       = TLV_META_TYPE_UINT   | 705 # the timeout for this C2 group
+TLV_TYPE_C2_RETRY_TOTAL        = TLV_META_TYPE_UINT   | 706 # number of times to retry this C2
+TLV_TYPE_C2_RETRY_WAIT         = TLV_META_TYPE_UINT   | 707 # how long to wait between reconnect attempts
+TLV_TYPE_C2_URL                = TLV_META_TYPE_STRING | 708 # base URL of this C2 (scheme://host:port/uri)
+TLV_TYPE_C2_URI                = TLV_META_TYPE_STRING | 709 # URI to append to base URL (for HTTP(s)), if any
+TLV_TYPE_C2_PROXY_URL          = TLV_META_TYPE_STRING | 710 # Proxy URL
+TLV_TYPE_C2_PROXY_USER         = TLV_META_TYPE_STRING | 711 # Proxy user name
+TLV_TYPE_C2_PROXY_PASS         = TLV_META_TYPE_STRING | 712 # Proxy password
+TLV_TYPE_C2_GET                = TLV_META_TYPE_GROUP  | 713 # A grouping of params associated with GET requests
+TLV_TYPE_C2_POST               = TLV_META_TYPE_GROUP  | 714 # A grouping of params associated with POST requests
+TLV_TYPE_C2_HEADERS            = TLV_META_TYPE_STRING | 715 # Custom headers
+TLV_TYPE_C2_UA                 = TLV_META_TYPE_STRING | 716 # User agent
+TLV_TYPE_C2_CERT_HASH          = TLV_META_TYPE_RAW    | 717 # Expected SSL certificate hash
+TLV_TYPE_C2_PREFIX             = TLV_META_TYPE_RAW    | 718 # Data to prepend to the outgoing payload
+TLV_TYPE_C2_SUFFIX             = TLV_META_TYPE_RAW    | 719 # Data to append to the outgoing payload
+TLV_TYPE_C2_ENC_INBOUND        = TLV_META_TYPE_UINT   | 720 # Server-inbound (client->server) body/metadata encoding
+TLV_TYPE_C2_PREFIX_SKIP        = TLV_META_TYPE_UINT   | 721 # Size of prefix to skip (in bytes)
+TLV_TYPE_C2_SUFFIX_SKIP        = TLV_META_TYPE_UINT   | 722 # Size of suffix to skip (in bytes)
+TLV_TYPE_C2_UUID_COOKIE        = TLV_META_TYPE_STRING | 723 # Name of the cookie to put the UUID in
+TLV_TYPE_C2_UUID_GET           = TLV_META_TYPE_STRING | 724 # Name of the GET parameter to put the UUID in
+TLV_TYPE_C2_UUID_HEADER        = TLV_META_TYPE_STRING | 725 # Name of the header to put the UUID in
+TLV_TYPE_C2_UUID               = TLV_META_TYPE_STRING | 726 # string representation of the UUID for C2s
+TLV_TYPE_SESSION_FLAGS         = TLV_META_TYPE_UINT   | 727 # session-level config flags (e.g. FLAG_STAGELESS, FLAG_DEBUG)
+TLV_TYPE_C2_ENC_OUTBOUND       = TLV_META_TYPE_UINT   | 728 # Client->server (request) body encoding (POST only)
+TLV_TYPE_C2_ENC_UUID           = TLV_META_TYPE_UINT   | 729 # Encoding applied to the UUID before placement (URL/header/cookie)
+TLV_TYPE_C2_UUID_PREFIX        = TLV_META_TYPE_STRING | 730 # String to prepend to the encoded UUID
+TLV_TYPE_C2_UUID_SUFFIX        = TLV_META_TYPE_STRING | 731 # String to append to the encoded UUID
+
+#
+# C2 Encoding flags
+#
+C2_ENCODING_NONE   = 0 # No encoding at all
+C2_ENCODING_B64    = 1 # Base64 encoding
+C2_ENCODING_B64URL = 2 # Base64 encoding with URI-safe characters
+C2_ENCODING_URL    = 3 # URL encoding
 
 #
 # Core flags
@@ -177,7 +208,7 @@ package com.metasploit.meterpreter.command;
 /**
  * All supported Command Identifiers
  *
- * @author Genereated by a tool @ #{::Time.now.utc}
+ * @author Generated by a tool @ #{::Time.now.utc}
  */
 public interface CommandId {
 #{command_ids.join("\n")}
@@ -313,6 +344,22 @@ class Tlv
     end
   end
 
+  def _tlv_type_string(value)
+    tlv_names = ::Rex::Post::Meterpreter::CommandMapper.get_tlv_names(value).map { |name| name.to_s.gsub('TLV_TYPE_', '').gsub('PACKET_TYPE_', '') }
+
+    case tlv_names.length
+    when 0
+      "unknown-#{value}"
+    when 1
+      tlv_names.first
+    else
+      # In the off-chance we have multiple TLV types which have the same value
+      # https://github.com/rapid7/metasploit-framework/issues/16267
+      # Sort it to ensure consistency across tests
+      "oneOf(#{tlv_names.sort_by(&:to_s).join(',')})"
+    end
+  end
+
   def inspect
     utype = type ^ TLV_META_TYPE_COMPRESSED
     group = false
@@ -326,83 +373,58 @@ class Tlv
       when TLV_META_TYPE_COMPLEX; "COMPLEX"
       else; 'unknown-meta-type'
       end
+
     stype = case type
-      when PACKET_TYPE_REQUEST; "Request"
-      when PACKET_TYPE_RESPONSE; "Response"
-      when TLV_TYPE_REQUEST_ID; "REQUEST-ID"
-      when TLV_TYPE_COMMAND_ID; "COMMAND-ID"
-      when TLV_TYPE_RESULT; "RESULT"
-      when TLV_TYPE_EXCEPTION; "EXCEPTION"
-      when TLV_TYPE_STRING; "STRING"
-      when TLV_TYPE_UINT; "UINT"
-      when TLV_TYPE_BOOL; "BOOL"
-
-      when TLV_TYPE_LENGTH; "LENGTH"
-      when TLV_TYPE_DATA; "DATA"
-      when TLV_TYPE_FLAGS; "FLAGS"
-
-      when TLV_TYPE_CHANNEL_ID; "CHANNEL-ID"
-      when TLV_TYPE_CHANNEL_TYPE; "CHANNEL-TYPE"
-      when TLV_TYPE_CHANNEL_DATA; "CHANNEL-DATA"
-      when TLV_TYPE_CHANNEL_DATA_GROUP; "CHANNEL-DATA-GROUP"
-      when TLV_TYPE_CHANNEL_CLASS; "CHANNEL-CLASS"
-      when TLV_TYPE_CHANNEL_PARENTID; "CHANNEL-PARENTID"
-
-      when TLV_TYPE_SEEK_WHENCE; "SEEK-WHENCE"
-      when TLV_TYPE_SEEK_OFFSET; "SEEK-OFFSET"
-      when TLV_TYPE_SEEK_POS; "SEEK-POS"
-
-      when TLV_TYPE_EXCEPTION_CODE; "EXCEPTION-CODE"
-      when TLV_TYPE_EXCEPTION_STRING; "EXCEPTION-STRING"
-
-      when TLV_TYPE_LIBRARY_PATH; "LIBRARY-PATH"
-      when TLV_TYPE_TARGET_PATH; "TARGET-PATH"
-      when TLV_TYPE_MIGRATE_PID; "MIGRATE-PID"
-      when TLV_TYPE_MIGRATE_PAYLOAD; "MIGRATE-PAYLOAD"
-      when TLV_TYPE_MIGRATE_ARCH; "MIGRATE-ARCH"
-      when TLV_TYPE_MIGRATE_BASE_ADDR; "MIGRATE-BASE-ADDR"
-      when TLV_TYPE_MIGRATE_ENTRY_POINT; "MIGRATE-ENTRY-POINT"
-      when TLV_TYPE_MIGRATE_STUB; "MIGRATE-STUB"
-      when TLV_TYPE_MIGRATE_SOCKET_PATH; "MIGRATE-SOCKET-PATH"
-      when TLV_TYPE_LIB_LOADER_NAME; "LIB-LOADER-NAME"
-      when TLV_TYPE_LIB_LOADER_ORDINAL; "LIB-LOADER-ORDINAL"
-      when TLV_TYPE_TRANS_TYPE; "TRANS-TYPE"
-      when TLV_TYPE_TRANS_URL; "TRANS-URL"
-      when TLV_TYPE_TRANS_COMM_TIMEOUT; "TRANS-COMM-TIMEOUT"
-      when TLV_TYPE_TRANS_SESSION_EXP; "TRANS-SESSION-EXP"
-      when TLV_TYPE_TRANS_CERT_HASH; "TRANS-CERT-HASH"
-      when TLV_TYPE_TRANS_PROXY_HOST; "TRANS-PROXY-HOST"
-      when TLV_TYPE_TRANS_PROXY_USER; "TRANS-PROXY-USER"
-      when TLV_TYPE_TRANS_PROXY_PASS; "TRANS-PROXY-PASS"
-      when TLV_TYPE_TRANS_RETRY_TOTAL; "TRANS-RETRY-TOTAL"
-      when TLV_TYPE_TRANS_RETRY_WAIT; "TRANS-RETRY-WAIT"
-      when TLV_TYPE_MACHINE_ID; "MACHINE-ID"
-      when TLV_TYPE_UUID; "UUID"
-      when TLV_TYPE_SESSION_GUID; "SESSION-GUID"
-      when TLV_TYPE_RSA_PUB_KEY; "RSA-PUB-KEY"
-      when TLV_TYPE_SYM_KEY_TYPE; "SYM-KEY-TYPE"
-      when TLV_TYPE_SYM_KEY; "SYM-KEY"
-      when TLV_TYPE_ENC_SYM_KEY; "ENC-SYM-KEY"
-
-      when TLV_TYPE_PIVOT_ID; "PIVOT-ID"
-      when TLV_TYPE_PIVOT_STAGE_DATA; "PIVOT-STAGE-DATA"
-      when TLV_TYPE_PIVOT_NAMED_PIPE_NAME; "PIVOT-NAMED-PIPE-NAME"
-
-      else; "unknown-#{type}"
+      when PACKET_TYPE_REQUEST; 'Request'
+      when PACKET_TYPE_RESPONSE; 'Response'
+      else; _tlv_type_string(type)
       end
-    val = value.inspect
-    if val.length > 50
-      val = val[0,50] + ' ..."'
-    end
+
     group ||= (self.class.to_s =~ /Packet/)
     if group
+      has_command_ids = type == PACKET_TYPE_RESPONSE && (self.method == COMMAND_ID_CORE_ENUMEXTCMD || self.method == COMMAND_ID_CORE_LOADLIB)
+      if has_command_ids
+        longest_command_id = self.get_tlvs(TLV_TYPE_UINT).map(&:value).max
+        longest_command_id_length = longest_command_id.to_s.length
+      end
+
       tlvs_inspect = "tlvs=[\n"
       @tlvs.each { |t|
-        tlvs_inspect << "  #{t.inspect}\n"
+        if t.type == TLV_TYPE_UINT && has_command_ids && longest_command_id_length
+          command_name = ::Rex::Post::Meterpreter::CommandMapper.get_command_name(t.value)
+          command_output = "command=#{command_name}>\n"
+          this_value_length = t.value.to_s.length
+          adjusted_command_name = command_output.rjust(command_output.length + longest_command_id_length - this_value_length)
+          tlvs_inspect << "  #{t.inspect.gsub(/>$/, '')} " << adjusted_command_name
+        else
+          tlvs_inspect << "  #{t.inspect}\n"
+        end
       }
       tlvs_inspect << "]"
     else
+      val = value.inspect
+      # Known list of datatypes that shouldn't be truncated, as their values are useful when debugging
+      is_val_truncation_allowed = ![
+        Rex::Post::Meterpreter::TLV_TYPE_UUID,
+        Rex::Post::Meterpreter::Extensions::Priv::TLV_TYPE_FS_FILE_PATH,
+        Rex::Post::Meterpreter::Extensions::Priv::TLV_TYPE_FS_SRC_FILE_PATH,
+        Rex::Post::Meterpreter::Extensions::Stdapi::TLV_TYPE_FILE_PATH,
+        Rex::Post::Meterpreter::Extensions::Stdapi::TLV_TYPE_DIRECTORY_PATH,
+        Rex::Post::Meterpreter::Extensions::Stdapi::TLV_TYPE_STAT_BUF,
+        Rex::Post::Meterpreter::Extensions::Stdapi::TLV_TYPE_PROCESS_PATH,
+      ].include?(type)
+      if is_val_truncation_allowed && val.length > 50
+        val = val[0,50] + ' ..."'
+      end
       tlvs_inspect = "meta=#{meta.ljust(10)} value=#{val}"
+      if type == TLV_TYPE_COMMAND_ID
+        begin
+          command_name = ::Rex::Post::Meterpreter::CommandMapper.get_command_name(value)
+        rescue
+          command_name = nil
+        end
+        tlvs_inspect <<= " command=#{command_name || 'unknown'}"
+      end
     end
     "#<#{self.class} type=#{stype.ljust(15)} #{tlvs_inspect}>"
   end
@@ -467,7 +489,7 @@ class Tlv
       # compress the raw data
       raw_compressed = Rex::Text.zlib_deflate( raw_uncompressed )
       # check we have actually made the raw data smaller...
-      # (small blobs often compress slightly larger then the origional)
+      # (small blobs often compress slightly larger then the original)
       # if the compressed data is not smaller, we dont use the compressed data
       if( raw_compressed.length < raw_uncompressed.length )
         # if so, set the TLV's type to indicate compression is used
@@ -494,7 +516,7 @@ class Tlv
       # set this TLV as using compression
       @compress = true
       # remove the TLV_META_TYPE_COMPRESSED flag from the tlv type to restore the
-      # tlv type to its origional, allowing for transparent data compression.
+      # tlv type to its original, allowing for transparent data compression.
       self.type = self.type ^ TLV_META_TYPE_COMPRESSED
       # decompress the compressed data (skipping the length and type DWORD's)
       raw_decompressed = Rex::Text.zlib_inflate( raw[HEADER_SIZE..length-1] )
@@ -824,6 +846,10 @@ class Packet < GroupTlv
   #
   ##
 
+  def Packet.create_config()
+    Packet.new(PACKET_TYPE_CONFIG)
+  end
+
   #
   # Creates a request with the supplied method.
   #
@@ -957,7 +983,7 @@ class Packet < GroupTlv
     raw = (session_guid || NULL_GUID).dup
     tlv_data = GroupTlv.instance_method(:to_r).bind(self).call
 
-    if key && key[:key] && (key[:type] == ENC_FLAG_AES128 || key[:type] == ENC_FLAG_AES256)
+    if @type != PACKET_TYPE_CONFIG && key && key[:key] && (key[:type] == ENC_FLAG_AES128 || key[:type] == ENC_FLAG_AES256)
       # encrypt the data, but not include the length and type
       iv, ciphertext = aes_encrypt(key[:key], tlv_data[HEADER_SIZE..-1])
       # now manually add the length/type/iv/ciphertext
@@ -1092,4 +1118,3 @@ end
 
 
 end; end; end
-

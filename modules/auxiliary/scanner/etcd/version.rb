@@ -17,14 +17,14 @@ class MetasploitModule < Msf::Auxiliary
         to obtain the version of etcd.
       ),
       'References' => [
-        ['URL', 'https://elweb.co/the-security-footgun-in-etcd']
+        ['URL', 'https://gcollazo.com/the-security-footgun-in-etcd/']
       ],
       'Author' => [
         'Giovanni Collazo <hello@gcollazo.com>', # discovery
         'Jon Hart <jon_hart@rapid7.com>' # msf module
       ],
       'License' => MSF_LICENSE,
-      'DisclosureDate' => "Mar 16 2018"
+      'DisclosureDate' => '2018-03-16'
     )
   end
 

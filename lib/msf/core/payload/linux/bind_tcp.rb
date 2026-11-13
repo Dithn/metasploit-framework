@@ -13,13 +13,13 @@ module Msf
 module Payload::Linux::BindTcp
 
   include Msf::Payload::TransportConfig
-  include Msf::Payload::Linux
+  include Msf::Payload::Linux::X86::Prepends
   include Msf::Payload::Linux::SendUUID
 
   #
   # Generate the first stage
   #
-  def generate
+  def generate(_opts = {})
     conf = {
       port:     datastore['LPORT'],
       reliable: false

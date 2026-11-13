@@ -1,15 +1,14 @@
 ; build with:
 ;   nasm elf_aarch64_template.s -f bin -o template_aarch64_linux.bin
 
-
 BITS 64
-org     0
+org     0x400000
 ehdr:                            ; Elf32_Ehdr
   db    0x7F, "ELF", 2, 1, 1, 0  ;   e_ident
   db    0, 0, 0, 0,  0, 0, 0, 0  ;
   dw    2                        ;   e_type       = ET_EXEC for an executable
   dw    0xB7                     ;   e_machine    = AARCH64
-  dd    0                        ;   e_version
+  dd    1                        ;   e_version
   dq    _start                   ;   e_entry
   dq    phdr - $$                ;   e_phoff
   dq    0                        ;   e_shoff

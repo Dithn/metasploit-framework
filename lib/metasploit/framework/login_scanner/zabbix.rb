@@ -25,7 +25,10 @@ module Metasploit
         # @param credential [Metasploit::Framework::Credential] The credential object
         # @return [Result]
         def attempt_login(credential)
-          result_opts = { credential: credential }
+          result_opts = {
+            credential: credential,
+            **service_as_result(service_opts)
+          }
 
           begin
             status = try_login(credential)
@@ -41,7 +44,9 @@ module Metasploit
         # (see Base#check_setup)
         def check_setup
           begin
-            res = send_request({'uri' => normalize_uri('/')})
+            res = send_request({
+              'uri' => normalize_uri('/')
+            })
             return "Connection failed" if res.nil?
 
             if res.code != 200
@@ -49,7 +54,7 @@ module Metasploit
             end
 
             if res.body.to_s !~ /Zabbix ([^\s]+) Copyright .* by Zabbix/m # Regex check for older versions of Zabbix prior to version 3.
-              if res.body.to_s !~ /<a target="_blank" class="grey link-alt" href="http[sS]{0,1}:\/\/www\.zabbix\.com\/documentation\/(\d+\.\d+)\/">Help<\/a>/m
+              if res.body.to_s !~ /href="http[sS]{0,1}:\/\/www\.zabbix\.com\/documentation\/(\d+\.\d+)\/">Help<\/a>/m
 	              return "Unexpected HTTP body (is this really Zabbix?)" # If both the regex for the old and new versions
                                                                        # fail to match, the target likely isn't Zabbix.
               end
@@ -61,19 +66,17 @@ module Metasploit
             return "Unable to connect to target"
           end
 
+          report_service(service_opts)
+
           false
         end
 
         # Sends a HTTP request with Rex
         #
-        # @param (see Rex::Proto::Http::Resquest#request_raw)
+        # @param (see Rex::Proto::Http::Request#request_raw)
         # @return [Rex::Proto::Http::Response] The HTTP response
         def send_request(opts)
-          cli = Rex::Proto::Http::Client.new(host, port, {'Msf' => framework, 'MsfExploit' => self}, ssl, ssl_version, proxies, http_username, http_password)
-          configure_http_client(cli)
-          cli.connect
-          req = cli.request_raw(opts)
-          res = cli.send_recv(req)
+          res = super(opts)
 
           # Found a cookie? Set it. We're going to need it.
           if res && res.get_cookies =~ /(zbx_session(?:id)?=\w+(?:%3D){0,2};)/i
@@ -146,6 +149,10 @@ module Metasploit
           rescue ::EOFError, Errno::ETIMEDOUT, Errno::ECONNRESET, Rex::ConnectionError, OpenSSL::SSL::SSLError, ::Timeout::Error => e
             return {:status => Metasploit::Model::Login::Status::UNABLE_TO_CONNECT, proof: e}
           end
+        end
+
+        def service_opts
+          build_service_opts('zabbix')
         end
 
       end

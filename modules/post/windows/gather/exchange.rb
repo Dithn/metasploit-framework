@@ -39,7 +39,19 @@ class MetasploitModule < Msf::Post
           [ 'LIST', { 'Description' => 'List basic information about all Exchange servers and mailboxes hosted on the target' } ],
           [ 'EXPORT', { 'Description' => 'Export and download a chosen mailbox in the form of a .PST file, with support for an optional filter keyword' } ],
         ],
-        'DefaultAction' => 'LIST'
+        'DefaultAction' => 'LIST',
+        'Compat' => {
+          'Meterpreter' => {
+            'Commands' => %w[
+              stdapi_fs_stat
+            ]
+          }
+        },
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [IOC_IN_LOGS],
+          'Reliability' => []
+        }
       )
     )
 
@@ -52,7 +64,7 @@ class MetasploitModule < Msf::Post
 
     register_advanced_options(
       [
-        OptInt.new('TIMEOUT', [true, 'The maximum time (in seconds) to wait for any Powershell scripts to complete', 600]),
+        OptInt.new('TIMEOUT', [true, 'The maximum time (in seconds) to wait for any PowerShell scripts to complete', 600]),
         OptFloat.new('DownloadSizeThreshold', [true, 'The file size of export results after which a prompt will appear to confirm the download, in MB (0 for no threshold)', 50.0]),
         OptBool.new('SkipLargeDownloads', [true, 'Automatically skip downloading export results that are larger than DownloadSizeThreshold (don\'t show prompt)', false])
       ]

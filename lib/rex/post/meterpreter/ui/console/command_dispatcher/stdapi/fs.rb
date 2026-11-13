@@ -3,6 +3,7 @@ require 'tempfile'
 require 'filesize'
 require 'rex/post/meterpreter'
 require 'rex/post/meterpreter/extensions/stdapi/command_ids'
+require 'msf/ui/console/local_file_system'
 
 module Rex
 module Post
@@ -20,11 +21,18 @@ class Console::CommandDispatcher::Stdapi::Fs
 
   include Console::CommandDispatcher
   include Rex::Post::Meterpreter::Extensions::Stdapi
+  include Msf::Ui::Console::LocalFileSystem
 
   CHECKSUM_ALGORITHMS = %w{ md5 sha1 }
   private_constant :CHECKSUM_ALGORITHMS
-  PATH_EXPAND_REGEX = /\%(\w*)\%/
-  private_constant :PATH_EXPAND_REGEX
+
+  private def path_expand_regex
+    if client.platform == 'windows'
+      /\%(\w*)\%/
+    else
+      /\$(([A-Za-z0-9_]+)|\{([A-Za-z0-9_]+)\})|^~/
+    end
+  end
 
   #
   # Options for the download command.
@@ -59,16 +67,6 @@ class Console::CommandDispatcher::Stdapi::Fs
     "-R" => [ false, "Recursively list subdirectories encountered" ])
 
   #
-  # Options for the lls command
-  #
-  @@lls_opts = Rex::Parser::Arguments.new(
-    "-h" => [ false, "Help banner" ],
-    "-S" => [ true,  "Search string on filename (as regular expression)" ],
-    "-t" => [ false, "Sort by time" ],
-    "-s" => [ false, "Sort by size" ],
-    "-r" => [ false, "Reverse sort order" ])
-
-  #
   # List of supported commands.
   #
   def commands
@@ -80,12 +78,8 @@ class Console::CommandDispatcher::Stdapi::Fs
       'dir'        => 'List files (alias for ls)',
       'download'   => 'Download a file or directory',
       'edit'       => 'Edit a file',
-      'getlwd'     => 'Print local working directory',
       'getwd'      => 'Print working directory',
-      'lcd'        => 'Change local working directory',
-      'lpwd'       => 'Print local working directory',
       'ls'         => 'List files',
-      'lls'        => 'List local files',
       'mkdir'      => 'Make directory',
       'pwd'        => 'Print working directory',
       'rm'         => 'Delete the specified file',
@@ -106,12 +100,8 @@ class Console::CommandDispatcher::Stdapi::Fs
       'dir'        => [COMMAND_ID_STDAPI_FS_STAT, COMMAND_ID_STDAPI_FS_LS],
       'download'   => [],
       'edit'       => [],
-      'getlwd'     => [],
       'getwd'      => [COMMAND_ID_STDAPI_FS_GETWD],
-      'lcd'        => [],
-      'lpwd'       => [],
       'ls'         => [COMMAND_ID_STDAPI_FS_STAT, COMMAND_ID_STDAPI_FS_LS],
-      'lls'        => [],
       'mkdir'      => [COMMAND_ID_STDAPI_FS_MKDIR],
       'pwd'        => [COMMAND_ID_STDAPI_FS_GETWD],
       'rmdir'      => [COMMAND_ID_STDAPI_FS_DELETE_DIR],
@@ -124,7 +114,8 @@ class Console::CommandDispatcher::Stdapi::Fs
       'show_mount' => [COMMAND_ID_STDAPI_FS_MOUNT_SHOW],
     }
 
-    filter_commands(all, reqs)
+    # Merge the local file system commands into the filtered commands hash
+    filter_commands(all.merge(local_fs_commands), reqs)
   end
 
   #
@@ -132,6 +123,14 @@ class Console::CommandDispatcher::Stdapi::Fs
   #
   def name
     "Stdapi: File system"
+  end
+
+  def vali_date(str)
+    result = DateTime.parse(str)
+    return result.to_time.to_i
+  rescue
+    print_error("Bad date/time specification (#{str}). Use this format: \"YYYY-mm-dd\" or \"YYYY-mm-ddTHH:MM:SS\", e.g \"1970-01-01\"")
+    nil
   end
 
   #
@@ -143,12 +142,16 @@ class Console::CommandDispatcher::Stdapi::Fs
     recurse = true
     globs   = []
     files   = []
+    modified_start_date = nil
+    modified_end_date = nil
 
     opts = Rex::Parser::Arguments.new(
       "-h" => [ false, "Help Banner" ],
       "-d" => [ true,  "The directory/drive to begin searching from. Leave empty to search all drives. (Default: #{root})" ],
       "-f" => [ true,  "A file pattern glob to search for. (e.g. *secret*.doc?)" ],
-      "-r" => [ true,  "Recursively search sub directories. (Default: #{recurse})" ]
+      "-r" => [ true,  "Recursively search sub directories. (Default: #{recurse})" ],
+      "-a" => [ true,  "Find files modified after timestamp (UTC).  Format: YYYY-mm-dd or YYYY-mm-ddTHH:MM:SS"],
+      "-b" => [ true,  "Find files modified before timestamp (UTC). Format: YYYY-mm-dd or YYYY-mm-ddTHH:MM:SS"]
     )
 
     opts.parse(args) { | opt, idx, val |
@@ -160,10 +163,17 @@ class Console::CommandDispatcher::Stdapi::Fs
           return
         when "-d"
           root = val
+          root = client.fs.file.expand_path(root) if root =~ path_expand_regex
         when "-f"
           globs << val
         when "-r"
           recurse = false if val =~ /^(f|n|0)/i
+        when "-a"
+          modified_start_date = vali_date(val)
+          return unless modified_start_date
+        when "-b"
+          modified_end_date = vali_date(val)
+          return unless modified_end_date
       end
     }
 
@@ -173,7 +183,7 @@ class Console::CommandDispatcher::Stdapi::Fs
     end
 
     globs.uniq.each do |glob|
-      files += client.fs.file.search(root, glob, recurse)
+      files += client.fs.file.search(root, glob, recurse, -1, modified_start_date, modified_end_date)
     end
 
     if files.empty?
@@ -181,15 +191,27 @@ class Console::CommandDispatcher::Stdapi::Fs
       return
     end
 
-    print_line("Found #{files.length} result#{ files.length > 1 ? 's' : '' }...")
-    files.each do | file |
-      if file['size'] > 0
-        print("    #{file['path']}#{ file['path'].empty? ? '' : client.fs.file.separator }#{file['name']} (#{file['size']} bytes)\n")
-      else
-        print("    #{file['path']}#{ file['path'].empty? ? '' : client.fs.file.separator }#{file['name']}\n")
-      end
-    end
+    header = "Found #{files.length} result#{ files.length > 1 ? 's' : '' }..."
+    results_table = Rex::Text::Table.new(
+        'WordWrap'   => false,
+        'Width'      => 120,
+        'Header'     => header,
+        'Indent'     => 0,
+        'SortIndex'  => 0,
+        'Columns'    => ['Path', 'Size (bytes)', 'Modified (UTC)'],
+    )
 
+    files.each do | file |
+      filestr = ''
+      unless file['path'].empty?
+        filestr += "#{file['path']}#{client.fs.file.separator}"
+      end
+      filestr += file['name']
+      datestr = ''
+      datestr = Time.at(file['mtime']).to_s if file['mtime']
+      results_table << [filestr, file['size'], datestr]
+    end
+    print_line results_table.to_s
   end
 
   #
@@ -241,10 +263,14 @@ class Console::CommandDispatcher::Stdapi::Fs
       return true
     end
 
-    if (client.fs.file.stat(args[0]).directory?)
-      print_error("#{args[0]} is a directory")
+    path = args[0]
+    path = client.fs.file.expand_path(path) if path =~ path_expand_regex
+
+
+    if (client.fs.file.stat(path).directory?)
+      print_error("#{path} is a directory")
     else
-      fd = client.fs.file.new(args[0], "rb")
+      fd = client.fs.file.new(path, "rb")
       begin
         until fd.eof?
           print(fd.read)
@@ -273,8 +299,8 @@ class Console::CommandDispatcher::Stdapi::Fs
       print_line("Usage: cd directory")
       return true
     end
-    if args[0] =~ PATH_EXPAND_REGEX
-      client.fs.dir.chdir(client.fs.file.expand_path(args[0].upcase))
+    if args[0] =~ path_expand_regex
+      client.fs.dir.chdir(client.fs.file.expand_path(args[0]))
     else
       client.fs.dir.chdir(args[0])
     end
@@ -290,27 +316,6 @@ class Console::CommandDispatcher::Stdapi::Fs
   end
 
   #
-  # Change the local working directory.
-  #
-  def cmd_lcd(*args)
-    if (args.length == 0)
-      print_line("Usage: lcd directory")
-      return true
-    end
-
-    ::Dir.chdir(args[0])
-
-    return true
-  end
-
-  #
-  # Tab completion for the lcd command
-  #
-  def cmd_lcd_tabs(str, words)
-    tab_complete_directory(str, words)
-  end
-
-  #
   # Retrieve the checksum of a file
   #
   def cmd_checksum(*args)
@@ -322,6 +327,7 @@ class Console::CommandDispatcher::Stdapi::Fs
     end
 
     args.each do |filepath|
+      filepath = client.fs.file.expand_path(filepath) if filepath =~ path_expand_regex
       checksum = client.fs.file.send(algorithm, filepath)
       print_line("#{Rex::Text.to_hex(checksum, '')}  #{filepath}")
     end
@@ -350,7 +356,7 @@ class Console::CommandDispatcher::Stdapi::Fs
     end
 
     args.each do |file_path|
-      file_path = client.fs.file.expand_path(file_path) if file_path =~ PATH_EXPAND_REGEX
+      file_path = client.fs.file.expand_path(file_path) if file_path =~ path_expand_regex
       client.fs.file.rm(file_path)
     end
 
@@ -370,9 +376,9 @@ class Console::CommandDispatcher::Stdapi::Fs
       return true
     end
     old_path = args[0]
-    old_path = client.fs.file.expand_path(old_path) if old_path =~ PATH_EXPAND_REGEX
+    old_path = client.fs.file.expand_path(old_path) if old_path =~ path_expand_regex
     new_path = args[1]
-    new_path = client.fs.file.expand_path(new_path) if new_path =~ PATH_EXPAND_REGEX
+    new_path = client.fs.file.expand_path(new_path) if new_path =~ path_expand_regex
     client.fs.file.mv(old_path, new_path)
     return true
   end
@@ -382,6 +388,7 @@ class Console::CommandDispatcher::Stdapi::Fs
   alias :cmd_mv_tabs :cmd_cat_tabs
   alias :cmd_move_tabs :cmd_cat_tabs
   alias :cmd_rename_tabs :cmd_cat_tabs
+  alias :cmd_download_tabs :cmd_cat_tabs
 
   #
   # Move source to destination
@@ -392,9 +399,9 @@ class Console::CommandDispatcher::Stdapi::Fs
       return true
     end
     old_path = args[0]
-    old_path = client.fs.file.expand_path(old_path) if old_path =~ PATH_EXPAND_REGEX
+    old_path = client.fs.file.expand_path(old_path) if old_path =~ path_expand_regex
     new_path = args[1]
-    new_path = client.fs.file.expand_path(new_path) if new_path =~ PATH_EXPAND_REGEX
+    new_path = client.fs.file.expand_path(new_path) if new_path =~ path_expand_regex
     client.fs.file.cp(old_path, new_path)
     return true
   end
@@ -412,7 +419,7 @@ class Console::CommandDispatcher::Stdapi::Fs
       return true
     end
     file_path = args[1]
-    file_path = client.fs.file.expand_path(file_path) if file_path =~ PATH_EXPAND_REGEX
+    file_path = client.fs.file.expand_path(file_path) if file_path =~ path_expand_regex
     client.fs.file.chmod(file_path, args[0].to_i(8))
     return true
   end
@@ -492,6 +499,8 @@ class Console::CommandDispatcher::Stdapi::Fs
 
     # Go through each source item and download them
     src_items.each { |src|
+
+      src = client.fs.file.expand_path(src) if src =~ path_expand_regex
       glob = nil
       if client.fs.file.is_glob?(src)
         glob = ::File.basename(src)
@@ -576,15 +585,18 @@ class Console::CommandDispatcher::Stdapi::Fs
     meterp_temp.binmode
     temp_path = meterp_temp.path
 
+    client_path = args[0]
+    client_path = client.fs.file.expand_path(client_path) if client_path =~ path_expand_regex
+
     # Try to download the file, but don't worry if it doesn't exist
-    client.fs.file.download_file(temp_path, args[0]) rescue nil
+    client.fs.file.download_file(temp_path, client_path) rescue nil
 
     # Spawn the editor (default to vi)
     editor = Rex::Compat.getenv('EDITOR') || 'vi'
 
     # If it succeeds, upload it to the remote side.
     if (system("#{editor} #{temp_path}") == true)
-      client.fs.file.upload_file(args[0], temp_path)
+      client.fs.file.upload_file(client_path, temp_path)
     end
 
     # Get rid of that pesky temporary file
@@ -592,17 +604,6 @@ class Console::CommandDispatcher::Stdapi::Fs
   end
 
   alias :cmd_edit_tabs :cmd_cat_tabs
-
-  #
-  # Display the local working directory.
-  #
-  def cmd_lpwd(*args)
-    print_line(::Dir.pwd)
-    return true
-  end
-
-  alias cmd_getlwd cmd_lpwd
-
 
   def cmd_ls_help
     print_line "Usage: ls [options] [glob/path]"
@@ -715,7 +716,7 @@ class Console::CommandDispatcher::Stdapi::Fs
         return 0
       when nil
         path = val
-        path = client.fs.file.expand_path(path) if path =~ PATH_EXPAND_REGEX
+        path = client.fs.file.expand_path(path) if path =~ path_expand_regex
       end
     }
 
@@ -744,143 +745,13 @@ class Console::CommandDispatcher::Stdapi::Fs
     return true
   end
 
-  #
-  # Tab completion for the ls command
-  #
-  def cmd_ls_tabs(str, words)
-    tab_complete_cdirectory(str, words)
-  end
-
+  alias :cmd_ls_tabs :cmd_cd_tabs
   #
   # Alias the ls command to dir, for those of us who have windows muscle-memory
   #
   alias :cmd_dir :cmd_ls
   alias :cmd_dir_help :cmd_ls_help
   alias :cmd_dir_tabs :cmd_ls_tabs
-
-  def cmd_lls_help
-    print_line "Usage: lls [options]"
-    print_line
-    print_line "Lists contents of a local directory or file info"
-    print_line @@lls_opts.usage
-  end
-
-  #
-  # Get list local path information for lls command
-  #
-  def list_local_path(path, sort, order, search_term = nil)
-    # Single file as path
-    if !::File.directory?(path)
-      perms = pretty_perms(path)
-      stat = ::File.stat(path)
-      print_line("#{perms}  #{stat.size}  #{stat.ftype[0,3]}  #{stat.mtime}  #{path}")
-      return
-    end
-
-    # Enumerate each item...
-    # No need to sort as Table will do it for us
-    columns = [ 'Mode', 'Size', 'Type', 'Last modified', 'Name' ]
-    tbl = Rex::Text::Table.new(
-      'Header'  => "Listing Local: #{path}",
-      'SortIndex' => columns.index(sort),
-      'SortOrder' => order,
-      'Columns' => columns)
-
-    items = 0
-    files = ::Dir.entries(path)
-
-    files.each do |file|
-      file_path = ::File.join(path, file)
-
-      perms = pretty_perms(file_path)
-      stat = ::File.stat(file_path)
-
-      row = [
-        perms ? perms                : '',
-        stat.size ? stat.size.to_s   : '',
-        stat.ftype ? stat.ftype[0,3] : '',
-        stat.mtime ? stat.mtime      : '',
-        file
-      ]
-      if file != '.' && file != '..'
-        if row.join(' ') =~ /#{search_term}/
-          tbl << row
-          items += 1
-        end
-      end
-    end
-    if items > 0
-      print_line(tbl.to_s)
-    else
-      print_line("No entries exist in #{path}")
-    end
-  end
-
-  # Code from prettymode in lib/rex/post/file_stat.rb
-  # adapted for local file usage
-  def pretty_perms(path)
-    m  = ::File.stat(path).mode
-    om = '%04o' % m
-    perms = ''
-
-    3.times {
-      perms = ((m & 01) == 01 ? 'x' : '-') + perms
-      perms = ((m & 02) == 02 ? 'w' : '-') + perms
-      perms = ((m & 04) == 04 ? 'r' : '-') + perms
-      m >>= 3
-    }
-
-    return "#{om}/#{perms}"
-  end
-
-  #
-  # List local files
-  #
-  def cmd_lls(*args)
-    # Set Defaults
-    path = ::Dir.pwd
-    sort = 'Name'
-    order = :forward
-    search_term = nil
-
-    # Parse the args
-    @@lls_opts.parse(args) { |opt, idx, val|
-      case opt
-      # Sort options
-      when '-s'
-        sort = 'Size'
-      when '-t'
-        sort = 'Last modified'
-      # Output options
-      when '-r'
-        order = :reverse
-      # Search
-      when '-S'
-        search_term = val
-        if search_term.nil?
-          print_error("Enter a search term")
-          return true
-        else
-          search_term = /#{search_term}/nmi
-        end
-      # Help and path
-      when "-h"
-        cmd_lls_help
-        return 0
-      when nil
-        path = val
-      end
-    }
-
-    list_local_path(path, sort, order, search_term)
-  end
-
-  alias :cmd_lls_tabs :cmd_lcd_tabs
-
-  #
-  # Alias the lls command to dir, for those of us who have windows muscle-memory
-  #
-  alias :cmd_ldir :cmd_lls
 
   #
   # Make one or more directory.
@@ -892,7 +763,7 @@ class Console::CommandDispatcher::Stdapi::Fs
     end
 
     args.each { |dir_path|
-      dir_path = client.fs.file.expand_path(dir_path) if dir_path =~ PATH_EXPAND_REGEX
+      dir_path = client.fs.file.expand_path(dir_path) if dir_path =~ path_expand_regex
       print_line("Creating directory: #{dir_path}")
       client.fs.dir.mkdir(dir_path)
     }
@@ -921,7 +792,7 @@ class Console::CommandDispatcher::Stdapi::Fs
     end
 
     args.each { |dir_path|
-      dir_path = client.fs.file.expand_path(dir_path) if dir_path =~ PATH_EXPAND_REGEX
+      dir_path = client.fs.file.expand_path(dir_path) if dir_path =~ path_expand_regex
       print_line("Removing directory: #{dir_path}")
       client.fs.dir.rmdir(dir_path)
     }
@@ -972,10 +843,12 @@ class Console::CommandDispatcher::Stdapi::Fs
     src_items << last if src_items.empty?
 
     if args.size == 1
-      dest = last.split(/(\/|\\)/).last
+      dest = client.fs.file.basename(last)
     else
       dest = last
     end
+
+    dest = client.fs.file.expand_path(dest) if dest =~ path_expand_regex
 
     # Go through each source item and upload them
     src_items.each { |src|
@@ -1014,25 +887,57 @@ class Console::CommandDispatcher::Stdapi::Fs
   #
   # Provide a generic tab completion for client file names.
   # This tab complete method would create request to the client, so
-  # sometimes it wouldn't execute successfully especailly on bad network.
+  # sometimes it wouldn't execute successfully especially on bad network.
   #
   def tab_complete_cfilenames(str, words)
-    if client.commands.include?(COMMAND_ID_STDAPI_FS_LS)
-      return client.fs.dir.match(str) rescue nil
-    end
-
-    []
+    tab_complete_path(str, words, false)
   end
 
   #
   # Provide a generic tab completion for client directory names.
   #
   def tab_complete_cdirectory(str, words)
-    if client.commands.include?(COMMAND_ID_STDAPI_FS_LS)
-      return client.fs.dir.match(str, true) rescue nil
-    end
+    tab_complete_path(str, words, true)
+  end
 
-    []
+  def tab_complete_path(str, words, dir_only)
+    if client.platform == 'windows'
+        ::Readline.completion_case_fold = true
+    end
+    if client.commands.include?(COMMAND_ID_STDAPI_FS_LS)
+      expanded = str
+      expanded = client.fs.file.expand_path(expanded) if expanded =~ path_expand_regex
+      results = client.fs.dir.match(expanded, dir_only) rescue []
+      results = unexpand_path_for_suggestions(str, expanded, results)
+      if results.length == 1 && results[0] != str && results[0].end_with?(client.fs.file.separator)
+        # If Readline receives a single value from this function, it will assume we're done with the tab
+        # completing, and add an extra space at the end.
+        # This is annoying if we're recursively tab-traversing our way through subdirectories -
+        # we may want to continue traversing, but MSF will add a space, requiring us to back up to continue
+        # tab-completing our way through successive subdirectories.
+        ::Readline.completion_append_character = nil
+      end
+      results
+    else
+      []
+    end
+  end
+
+  #
+  # After a path expansion followed by a tab completion suggestion set,
+  # unexpand the path back so that Readline is happy
+  #
+  def unexpand_path_for_suggestions(original_path, expanded_path, suggestions)
+    if original_path == expanded_path
+      suggestions
+    else
+      result = []
+      suggestions.each do |suggestion|
+        addition = suggestion[expanded_path.length..-1]
+        result.append("#{original_path}#{addition}")
+      end
+      result
+    end
   end
 
 end

@@ -13,7 +13,7 @@ class ManagedRemoteDataService
   include Singleton
 
   #
-  # Returns true if the the managed data service process is running.
+  # Returns true if the managed data service process is running.
   #
   def running?
     return @running
@@ -41,7 +41,12 @@ class ManagedRemoteDataService
       puts "Started process with pid #{@pid}"
 
       endpoint = "http://#{opts[:host]}:#{opts[:port]}"
-      @remote_host_data_service = Metasploit::Framework::DataService::RemoteHTTPDataService.new(endpoint)
+      # The data service enforces authentication, so opts[:api_token] must carry the token of
+      # an existing user or every request below - including the readiness check - gets a 401.
+      @remote_host_data_service = Metasploit::Framework::DataService::RemoteHTTPDataService.new(
+        endpoint,
+        api_token: opts[:api_token]
+      )
 
       count = 0
       loop do

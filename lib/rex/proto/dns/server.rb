@@ -8,137 +8,11 @@ module DNS
 
 class Server
 
-  class Cache
-    attr_reader :records, :lock, :monitor_thread
-    include Rex::Proto::DNS::Constants
-    # class DNSRecordError < ::Exception
-    #
-    # Create DNS Server cache
-    #
-    def initialize
-      @records = {}
-      @lock = Mutex.new
-    end
-
-    #
-    # Find entries in cache, substituting names for '*' in return
-    #
-    # @param search [String] Name or address to search for
-    # @param type [String] Record type to search for
-    #
-    # @return [Array] Records found
-    def find(search, type = 'A')
-      self.records.select do |record,expire|
-        record.type == type and (expire < 1 or expire > ::Time.now.to_i) and
-        (
-          record.name == '*' or
-          record.name == search or record.name[0..-2] == search or
-          ( record.respond_to?(:address) and record.address.to_s == search )
-        )
-      end.keys.map do |record|
-        if search.to_s.match(MATCH_HOSTNAME) and record.name == '*'
-          record = Dnsruby::RR.create(name: name, type: type, address: address)
-        else
-          record
-        end
-      end
-    end
-
-    #
-    # Add record to cache, only when "running"
-    #
-    # @param record [Dnsruby::RR] Record to cache
-    def cache_record(record)
-      return unless @monitor_thread
-      if record.is_a?(Dnsruby::RR) and
-      (!record.respond_to?(:address) or Rex::Socket.is_ip_addr?(record.address.to_s)) and
-      record.name.to_s.match(MATCH_HOSTNAME)
-        add(record, ::Time.now.to_i + record.ttl)
-      else
-        raise "Invalid record for cache entry - #{record.inspect}"
-      end
-    end
-
-    #
-    # Add static record to cache
-    #
-    # @param name [String] Name of record
-    # @param address [String] Address of record
-    # @param type [String] Record type to add
-    def add_static(name, address, type = 'A', replace = false)
-      if Rex::Socket.is_ip_addr?(address.to_s) and
-      ( name.to_s.match(MATCH_HOSTNAME) or name == '*')
-        find(name, type).each do |found|
-          delete(found)
-        end if replace
-        add(Dnsruby::RR.create(name: name, type: type, address: address),0)
-      else
-        raise "Invalid parameters for static entry - #{name}, #{address}, #{type}"
-      end
-    end
-
-    #
-    # Prune cache entries
-    #
-    # @param before [Fixnum] Time in seconds before which records are evicted
-    def prune(before = ::Time.now.to_i)
-      self.records.select do |rec, expire|
-        expire > 0 and expire < before
-      end.each {|rec, exp| delete(rec)}
-    end
-
-    #
-    # Start the cache monitor
-    #
-    def start
-      @monitor_thread = Rex::ThreadFactory.spawn("DNSServerCacheMonitor", false) {
-        while true
-          prune
-          Rex::ThreadSafe.sleep(0.5)
-        end
-      } unless @monitor_thread
-    end
-
-    #
-    # Stop the cache monitor
-    #
-    # @param flush [TrueClass,FalseClass] Remove non-static entries
-    def stop(flush = false)
-      self.monitor_thread.kill unless @monitor_thread.nil?
-      @monitor_thread = nil
-      if flush
-        self.records.select do |rec, expire|
-          rec.ttl > 0
-        end.each {|rec| delete(rec)}
-      end
-    end
-
-    protected
-
-    #
-    # Add a record to the cache with thread safety
-    #
-    # @param record [Dnsruby::RR] Record to add
-    # @param expire [Fixnum] Time in seconds when record becomes stale
-    def add(record, expire = 0)
-      self.lock.synchronize do
-        self.records[record] = expire
-      end
-    end
-
-    #
-    # Delete a record from the cache with thread safety
-    #
-    # @param record [Dnsruby::RR] Record to delete
-    def delete(record)
-      self.lock.synchronize do
-        self.records.delete(record)
-      end
-    end
-  end # Cache
-
   class MockDnsClient
+    extend Forwardable
     attr_reader :peerhost, :peerport, :srvsock
+
+    def_delegators :@srvsock, :localhost, :localport, :sendto
 
     #
     # Create mock DNS client
@@ -166,6 +40,9 @@ class Server
   include Rex::IO::GramServer
 
   Packet = Rex::Proto::DNS::Packet
+  attr_accessor :serve_tcp, :serve_udp, :fwd_res, :cache, :start_cache
+  attr_reader :serve_udp, :serve_tcp, :sock_options, :lock, :udp_sock, :tcp_sock
+
   #
   # Create DNS Server
   #
@@ -173,15 +50,15 @@ class Server
   # @param lport [Fixnum] Listener port
   # @param udp [TrueClass, FalseClass] Listen on UDP socket
   # @param tcp [TrueClass, FalseClass] Listen on TCP socket
+  # @param start_cache [TrueClass, FalseClass] Start the cache on initialization
   # @param res [Rex::Proto::DNS::Resolver] Resolver to use, nil to create a fresh one
+  # @param comm [Object] Communication object for sockets
   # @param ctx [Hash] Framework context for sockets
   # @param dblock [Proc] Handler for :dispatch_request flow control interception
   # @param sblock [Proc] Handler for :send_response flow control interception
   #
   # @return [Rex::Proto::DNS::Server] DNS Server object
-  attr_accessor :serve_tcp, :serve_udp, :fwd_res, :cache
-  attr_reader :serve_udp, :serve_tcp, :sock_options, :lock, :udp_sock, :tcp_sock
-  def initialize(lhost = '0.0.0.0', lport = 53, udp = true, tcp = false, res = nil, comm = nil, ctx = {}, dblock = nil, sblock = nil)
+  def initialize(lhost = '0.0.0.0', lport = 53, udp = true, tcp = false, start_cache = true, res = nil, comm = nil, ctx = {}, dblock = nil, sblock = nil)
 
     @serve_udp = udp
     @serve_tcp = tcp
@@ -195,7 +72,8 @@ class Server
     self.listener_thread = nil
     self.dispatch_request_proc = dblock
     self.send_response_proc = sblock
-    self.cache = Cache.new
+    self.start_cache = start_cache
+    self.cache = Rex::Proto::DNS::Cache.new
     @lock = Mutex.new
   end
 
@@ -221,8 +99,7 @@ class Server
 
   #
   # Start the DNS server and cache
-  # @param start_cache [TrueClass, FalseClass] stop the cache
-  def start(start_cache = true)
+  def start
 
     if self.serve_udp
       @udp_sock = Rex::Socket::Udp.create(self.sock_options)
@@ -242,7 +119,7 @@ class Server
       end
     end
 
-    self.cache.start if start_cache
+    self.cache.start if self.start_cache
   end
 
   #
@@ -286,39 +163,43 @@ class Server
     return if data.strip.empty?
     req = Packet.encode_drb(data)
     forward = req.dup
-    # Find cached items, remove request from forwarded packet
+    # Dnsruby#dup is shallow - req and forward share the same @question Array.
+    # Give forward its own copy so deleting forwarded questions doesn't also
+    # empty req.question, which we need intact when echoing it in the response.
+    forward.instance_variable_set(:@question, req.question.dup)
+    answers = []
+    # Find cached items, remove question from forwarded packet
     req.question.each do |ques|
-      cached = self.cache.find(ques.qname, ques.qtype.to_s)
-      if cached.empty?
-        next
-      else
-        req.answer = req.answer + cached
+      cached = self.cache.find(ques.qname, ques.qtype)
+      unless cached.empty?
+        answers.concat(cached)
         forward.question.delete(ques)
       end
     end
     # Forward remaining requests, cache responses
-    if forward.question.count > 0 and @fwd_res
-      forwarded = self.fwd_res.send(validate_packet(forward))
-      req.answer = req.answer + forwarded.answer
-      forwarded.answer.each do |ans|
-        self.cache.cache_record(ans)
-      end
-      req.header.ra = true # Set recursion bit
+    if forward.question.count > 0 && @fwd_res
+      forwarded = self.fwd_res.send(forward)
+      answers.concat(forwarded.answer)
+      forwarded.answer.each { |ans| self.cache.cache_record(ans) }
     end
-    # Finalize answers in response
-    # Check for empty response prior to sending
-    if req.answer.size < 1
-      req.header.rCode = Dnsruby::RCode::NOERROR
-    end
-    req.header.qr = true # Set response bit
-    send_response(cli, validate_packet(req).data)
+    # Build a fresh response message to avoid a Dnsruby stale-state encoding bug
+    # where instance_variable_set(:@answer) on a decoded request appends answer
+    # bytes after the packet end rather than inside the answer section.
+    resp = Dnsruby::Message.new
+    resp.header.id = req.header.id
+    resp.header.qr = true
+    resp.header.rd = req.header.rd      # echo Recursion Desired back to the client
+    resp.header.ra = !self.fwd_res.nil? # Recursion Available when we can forward upstream
+    req.question.each { |q| resp.add_question(q.qname, q.qtype, q.qclass) }
+    answers.uniq.each { |a| resp.add_answer(a) }
+    send_response(cli, resp.encode)
   end
 
   #
   # Returns the hardcore alias for the DNS service
   #
   def self.hardcore_alias(*args)
-    "#{(args[0] || '')}#{(args[1] || '')}"
+    "#{(args[0] || '')}-#{(args[1] || '')}-#{args[5] || ''}"
   end
 
   #
@@ -343,7 +224,12 @@ protected
       r,_,_ = ::IO.select(rds,wds,eds,1)
 
       if (r != nil and r[0] == self.udp_sock)
-        buf,host,port = self.udp_sock.recvfrom(65535)
+        buf, addr, source_port = self.udp_sock.recvfrom(65535)
+        if source_port
+          host, port = addr, source_port
+        else
+          host, port = addr[3], addr[1]
+        end
         # Mock up a client object for sending back data
         cli = MockDnsClient.new(host, port, r[0])
         dispatch_request(cli, buf)

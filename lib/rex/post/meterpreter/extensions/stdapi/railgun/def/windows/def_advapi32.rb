@@ -31,6 +31,22 @@ class Def_windows_advapi32
         ['LPVOID', 'hService', 'in'],
         ['PBLOB', 'lpServiceStatus', 'out']])
 
+    dll.add_function('BuildExplicitAccessWithNameA', 'VOID',[
+      ["PBLOB","pExplicitAccess","inout"],
+      ["PCHAR","pTrusteeName","in"],
+      ["DWORD","AccessPermissions","in"],
+      ["DWORD","AccessMode","in"],
+      ["DWORD","Inheritance","in"]
+    ])
+
+    dll.add_function('BuildExplicitAccessWithNameW', 'VOID',[
+      ["PBLOB","pExplicitAccess","inout"],
+      ["PWCHAR","pTrusteeName","in"],
+      ["DWORD","AccessPermissions","in"],
+      ["DWORD","AccessMode","in"],
+      ["DWORD","Inheritance","in"]
+    ])
+
     dll.add_function('CredEnumerateA', 'BOOL', [
         ['PCHAR', 'Filter', 'in'],
         ['DWORD', 'Flags', 'in'],
@@ -291,6 +307,27 @@ class Def_windows_advapi32
         ['LPVOID', 'hProv', 'in'],
         ['DWORD', 'dwFlags', 'in']])
 
+    dll.add_function('GetNamedSecurityInfoA', 'DWORD',[
+      ["PCHAR","pObjectName","in"],
+      ["DWORD","ObjectType","in"],
+      ["DWORD","SecurityInfo","in"],
+      ["PBLOB","ppsidOwner","out"],
+      ["PBLOB","ppsidGroup","out"],
+      ["PBLOB","ppDacl","out"],
+      ["PBLOB","ppSacl","out"],
+      ["PBLOB","ppSecurityDescriptor","out"]
+    ])
+
+    dll.add_function('GetNamedSecurityInfoW', 'DWORD',[
+      ["PWCHAR","pObjectName","in"],
+      ["DWORD","ObjectType","in"],
+      ["DWORD","SecurityInfo","in"],
+      ["PBLOB","ppsidOwner","out"],
+      ["PBLOB","ppsidGroup","out"],
+      ["PBLOB","ppDacl","out"],
+      ["PBLOB","ppSacl","out"],
+      ["PBLOB","ppSecurityDescriptor","out"]
+    ])
 
     # Function to open the Service Control Database
     dll.add_function('OpenSCManagerA','DWORD',[
@@ -1224,14 +1261,24 @@ class Def_windows_advapi32
       ["PBLOB","GenericMapping","in"],
       ])
 
+    dll.add_function('ConvertSidToStringSidA', 'BOOL',[
+      ["LPVOID", "Sid", "in"],
+      ["PLPVOID", "StringSid", "out"],
+      ])
+
+    dll.add_function('ConvertSidToStringSidW', 'BOOL',[
+      ["LPVOID", "Sid", "in"],
+      ["PLPVOID", "StringSid", "out"],
+      ])
+
     dll.add_function('ConvertStringSidToSidA', 'BOOL',[
       ["PCHAR","StringSid","in"],
-      ["PDWORD","pSid","out"],
+      ["PLPVOID","pSid","out"],
       ])
 
     dll.add_function('ConvertStringSidToSidW', 'BOOL',[
       ["PWCHAR","StringSid","in"],
-      ["PDWORD","pSid","out"],
+      ["PLPVOID","pSid","out"],
       ])
 
     dll.add_function('CopySid', 'BOOL',[
@@ -1759,6 +1806,10 @@ class Def_windows_advapi32
       ["PBLOB","lpLuid","out"],
       ])
 
+    dll.add_function('LsaNtStatusToWinError', 'ULONG',[
+      ["NTSTATUS", "Status", "in"]
+      ])
+
     dll.add_function('MakeAbsoluteSD', 'BOOL',[
       ["PBLOB","pSelfRelativeSecurityDescriptor","in"],
       ["PBLOB","pAbsoluteSecurityDescriptor","out"],
@@ -1899,13 +1950,13 @@ class Def_windows_advapi32
       ])
 
     dll.add_function('OpenProcessToken', 'BOOL',[
-      ["DWORD","ProcessHandle","in"],
+      ["HANDLE","ProcessHandle","in"],
       ["DWORD","DesiredAccess","in"],
       ["PHANDLE","TokenHandle","out"],
       ])
 
     dll.add_function('OpenThreadToken', 'BOOL',[
-      ["DWORD","ThreadHandle","in"],
+      ["HANDLE","ThreadHandle","in"],
       ["DWORD","DesiredAccess","in"],
       ["BOOL","OpenAsSelf","in"],
       ["PHANDLE","TokenHandle","out"],
@@ -2003,6 +2054,20 @@ class Def_windows_advapi32
       ["DWORD","dwAclInformationClass","in"],
       ])
 
+    dll.add_function('SetEntriesInAclA', 'DWORD',[
+      ["DWORD","cCountOfExplicitEntries","in"],
+      ["PBLOB","pListOfExplicitEntries","in"],
+      ["PBLOB","OldAcl","in"],
+      ["PBLOB","NewAcl","out"]
+    ])
+
+    dll.add_function('SetEntriesInAclW', 'DWORD',[
+      ["DWORD","cCountOfExplicitEntries","in"],
+      ["PBLOB","pListOfExplicitEntries","in"],
+      ["PBLOB","OldAcl","in"],
+      ["PBLOB","NewAcl","out"]
+    ])
+
     dll.add_function('SetFileSecurityA', 'BOOL',[
       ["PCHAR","lpFileName","in"],
       ["PBLOB","SecurityInformation","in"],
@@ -2020,6 +2085,26 @@ class Def_windows_advapi32
       ["PBLOB","SecurityInformation","in"],
       ["PBLOB","SecurityDescriptor","in"],
       ])
+
+    dll.add_function('SetNamedSecurityInfoA', 'DWORD',[
+      ["PCHAR","pObjectName","in"],
+      ["DWORD","ObjectType","in"],
+      ["DWORD","SecurityInfo","in"],
+      ["PBLOB","psidOwner","in"],
+      ["PBLOB","psidGroup","in"],
+      ["PBLOB","pDacl","in"],
+      ["PBLOB","pSacl","in"]
+    ])
+
+    dll.add_function('SetNamedSecurityInfoW', 'DWORD',[
+      ["PWCHAR","pObjectName","in"],
+      ["DWORD","ObjectType","in"],
+      ["DWORD","SecurityInfo","in"],
+      ["PBLOB","psidOwner","in"],
+      ["PBLOB","psidGroup","in"],
+      ["PBLOB","pDacl","in"],
+      ["PBLOB","pSacl","in"]
+    ])
 
     dll.add_function('SetPrivateObjectSecurity', 'BOOL',[
       ["PBLOB","SecurityInformation","in"],

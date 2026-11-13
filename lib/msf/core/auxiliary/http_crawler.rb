@@ -37,13 +37,12 @@ module Auxiliary::HttpCrawler
         OptInt.new('RequestTimeout', [false, 'The maximum number of seconds to wait for a reply', 15]),
         OptInt.new('RedirectLimit', [false, 'The maximum number of redirects for a single request', 5]),
         OptInt.new('RetryLimit', [false, 'The maximum number of attempts for a single request', 5]),
-        OptString.new('UserAgent', [true, 'The User-Agent header to use for all requests',
-          "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
-        ]),
+        OptString.new('UserAgent', [true, 'The User-Agent header to use for all requests', Rex::UserAgent.random]),
         OptString.new('BasicAuthUser', [false, 'The HTTP username to specify for basic authentication']),
         OptString.new('BasicAuthPass', [false, 'The HTTP password to specify for basic authentication']),
         OptString.new('HTTPAdditionalHeaders', [false, "A list of additional headers to send (separated by \\x01)"]),
         OptString.new('HTTPCookie', [false, "A HTTP cookie header to send with each request"]),
+        OptString.new('SSLServerNameIndication', [ false, 'SSL/TLS Server Name Indication (SNI)', nil]),
         Opt::SSLVersion
       ], self.class
     )
@@ -115,6 +114,7 @@ module Auxiliary::HttpCrawler
 
     t.merge!({
       :vhost    => vhost,
+      :ssl_server_name_indication  => datastore['SSLServerNameIndication'] || vhost,
       :host     => rhost,
       :port     => rport,
       :ssl      => ssl,
@@ -243,7 +243,8 @@ module Auxiliary::HttpCrawler
   # Specific module implementations should redefine this method
   # with whatever is meaningful to them.
   def crawler_process_page(t, page, cnt)
-    msg = "[#{"%.5d" % cnt}/#{"%.5d" % max_page_count}]    #{page.code || "ERR"} - #{@current_site.vhost} - #{page.url}"
+    return if page.nil? # Skip over pages that don't contain any info aka page is nil. We can't process these types of pages since there is no data to process.
+    msg = "[#{"%.5d" % cnt}/#{"%.5d" % max_page_count}]    #{page ? page.code || "ERR" : "ERR"} - #{@current_site.vhost} - #{page.url}"
     case page.code
       when 301,302
         if page.headers and page.headers["location"]
@@ -268,6 +269,7 @@ module Auxiliary::HttpCrawler
   def crawler_options(t)
     opts = {}
     opts[:user_agent]      = datastore['UserAgent']
+    opts[:ssl_server_name_indication] = datastore['SSLServerNameIndication']
     opts[:verbose]         = false
     opts[:threads]         = max_crawl_threads
     opts[:obey_robots_txt] = false
@@ -281,6 +283,7 @@ module Auxiliary::HttpCrawler
     opts[:module]              = self
     opts[:timeout]             = get_connection_timeout
     opts[:dirbust]             = dirbust?
+    opts[:http_subscriber] = Rex::Proto::Http::HttpLoggerSubscriber.new(logger: self)
 
     if (t[:headers] and t[:headers].length > 0)
       opts[:inject_headers] = t[:headers]
@@ -294,6 +297,9 @@ module Auxiliary::HttpCrawler
     opts[:password] = t[:password] || ''
     opts[:domain]   = t[:domain]   || 'WORKSTATION'
 
+    if ssl
+      opts[:ssl_version] = ssl_version
+    end
     opts
   end
 

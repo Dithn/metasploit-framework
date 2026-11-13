@@ -57,8 +57,8 @@ module Shell
     self.hist_last_saved = 0
 
     # Static prompt variables
-    self.local_hostname = ENV['HOSTNAME'] || `hostname`.split('.')[0] || ENV['COMPUTERNAME']
-    self.local_username = ENV['USER'] || `whoami` || ENV['USERNAME']
+    self.local_hostname = ENV['HOSTNAME'] || try_exec('hostname')&.split('.')&.first&.rstrip || ENV['COMPUTERNAME']
+    self.local_username = ENV['USER'] || try_exec('whoami')&.rstrip || ENV['USERNAME']
 
     self.framework = framework
   end
@@ -122,56 +122,52 @@ module Shell
   # Run the command processing loop.
   #
   def run(&block)
-    begin
-      require 'pry'
-      # pry history will not be loaded by default when pry is used as a breakpoint like `binding.pry`
+    # Only suppress Pry history if Pry is already loaded
+    if defined?(Pry)
       Pry.config.history_load = false
-    rescue LoadError
-      # Pry is a development dependency, if not available suppressing history_load can be safely ignored.
     end
 
-    HistoryManager.push_context(history_file: histfile, name: name)
-    self.hist_last_saved = Readline::HISTORY.length
+    with_history_manager_context do
+      begin
+        while true
+          # If the stop flag was set or we've hit EOF, break out
+          break if self.stop_flag || self.stop_count > 1
 
-    begin
+          init_tab_complete
+          update_prompt
 
-      while true
-        # If the stop flag was set or we've hit EOF, break out
-        break if self.stop_flag || self.stop_count > 1
+          line = get_input_line
 
-        init_tab_complete
-        update_prompt
+          # If you have sessions active, this will give you a shot to exit
+          # gracefully. If you really are ambitious, 2 eofs will kick this out
+          if input.eof? || line == nil
+            self.stop_count += 1
+            next if self.stop_count > 1
 
-        line = get_input_line
+            if block
+              block.call('quit')
+            elsif respond_to?(:run_single)
+              # PseudoShell does not provide run_single
+              run_single('quit')
+            end
 
-        # If you have sessions active, this will give you a shot to exit
-        # gracefully. If you really are ambitious, 2 eofs will kick this out
-        if input.eof? || line == nil
-          self.stop_count += 1
-          next if self.stop_count > 1
-          run_single('quit')
+            # If a block was passed in, pass the line to it.  If it returns true,
+            # break out of the shell loop.
+          elsif block
+            break if block.call(line)
 
-        # If a block was passed in, pass the line to it.  If it returns true,
-        # break out of the shell loop.
-        elsif block
-          break if block.call(line)
-
-        # Otherwise, call what should be an overridden instance method to
-        # process the line.
-        else
-          run_single(line)
-          self.stop_count = 0
+            # Otherwise, call what should be an overridden instance method to
+            # process the line.
+          else
+            run_single(line)
+            self.stop_count = 0
+          end
         end
-
+        # Prevent accidental console quits
+      rescue ::Interrupt
+        output.print("Interrupt: use the 'exit' command to quit\n")
+        retry
       end
-    # Prevent accidental console quits
-    rescue ::Interrupt
-      output.print("Interrupt: use the 'exit' command to quit\n")
-      retry
-    ensure
-      HistoryManager.pop_context
-      HistoryManager.flush
-      self.hist_last_saved = Readline::HISTORY.length
     end
   end
 
@@ -292,9 +288,28 @@ module Shell
   attr_accessor :on_command_proc
   attr_accessor :on_print_proc
   attr_accessor :framework
+  attr_accessor :history_manager
   attr_accessor :hist_last_saved # the number of history lines when last saved/loaded
 
   protected
+
+  # Executes the yielded block under the context of a new HistoryManager context. The shell's history will be flushed
+  # to disk when no longer interacting with the shell. If no history manager is available, the history will not be persisted.
+  def with_history_manager_context
+    history_manager = self.history_manager || framework&.history_manager
+    return yield unless history_manager
+
+    begin
+      history_manager.with_context(history_file: histfile, name: name) do
+        self.hist_last_saved = Readline::HISTORY.length
+
+        yield
+      end
+    ensure
+      history_manager.flush
+      self.hist_last_saved = Readline::HISTORY.length
+    end
+  end
 
   def supports_color?
     true
@@ -346,7 +361,7 @@ module Shell
   def parse_line(line)
     log_input(line)
 
-    line.gsub!(/(\r|\n)/, '')
+    line = line.gsub(/(\r|\n)/, '')
 
     begin
       return args = Rex::Parser::Arguments.from_s(line)
@@ -400,7 +415,7 @@ module Shell
     session = framework.sessions.values.find { |session| session.interacting }
     default = 'unknown'
 
-    formatted = ''
+    formatted = +''
     skip_next = false
     for prefix, spec in str.split('').each_cons(2) do
       if skip_next
@@ -492,6 +507,14 @@ module Shell
   attr_reader   :cont_flag # :nodoc:
   attr_accessor :name
 private
+
+  def try_exec(command)
+    begin
+      %x{ #{ command } }
+    rescue SystemCallError
+      nil
+    end
+  end
 
   attr_writer   :cont_flag # :nodoc:
 

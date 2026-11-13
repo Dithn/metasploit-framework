@@ -44,12 +44,16 @@ class Library
   include LibraryHelper
 
   @@datatype_map = {
-    'HANDLE'  => 'LPVOID',
+    'HANDLE'   => 'LPVOID',
     # really should be PVOID* but LPVOID is handled specially with the 'L' prefix to *not* treat it as a pointer, and
     # for railgun's purposes LPVOID == ULONG_PTR
-    'PHANDLE' => 'PULONG_PTR',
-    'SIZE_T'  => 'ULONG_PTR',
-    'PSIZE_T' => 'PULONG_PTR',
+    'PHANDLE'  => 'PULONG_PTR',
+    'SIZE_T'   => 'ULONG_PTR',
+    'PSIZE_T'  => 'PULONG_PTR',
+    'PLPVOID'  => 'PULONG_PTR',
+    'ULONG'    => 'DWORD',
+    'PULONG'   => 'PDWORD',
+    'NTSTATUS' => 'DWORD'
   }.freeze
 
   attr_accessor :functions
@@ -134,7 +138,7 @@ class Library
     when ARCH_X86
       native = 'V'
     else
-      raise NotImplementedError, 'Unsupported architecture (must be ARCH_X86 or ARCH_X64)'
+      raise NotImplementedError, 'Unsupported architecture for railgun (must be ARCH_X86 or ARCH_X64)'
     end
 
     # We transmit the immediate stack and three heap-buffers:
@@ -203,10 +207,14 @@ class Library
       #puts "  processing (#{param_desc[0]}, #{param_desc[1]}, #{param_desc[2]})"
       buffer = nil
       # is it a pointer to a buffer on our stack
-      if ['PULONG_PTR', 'PDWORD', 'PWCHAR', 'PCHAR', 'PBLOB'].include? param_desc[0]
-        #puts '   pointer'
-        if args[param_idx] == nil # null pointer?
-          buffer  = [0].pack(native) # type: DWORD  (so the library does not rebase it)
+      if ['PULONG_PTR', 'PDWORD', 'PWCHAR', 'PCHAR', 'PBLOB'].include?(param_desc[0])
+        if ['PWCHAR', 'PCHAR', 'PBLOB'].include?(param_desc[0]) && param_desc[2] == 'in' && args[param_idx].is_a?(Integer)
+          # allow PWCHAR, PCHAR and PBLOB to also be passed as a pointer instead of a buffer
+          buffer  = [0].pack(native)
+          num     = param_to_number(args[param_idx])
+          buffer += [num].pack(native)
+        elsif args[param_idx] == nil # null pointer?
+          buffer  = [0].pack(native) # type: LPVOID  (so the library does not rebase it)
           buffer += [0].pack(native) # value: 0
         elsif param_desc[2] == 'in'
           buffer  = [1].pack(native)
@@ -270,14 +278,14 @@ class Library
     [packet, layouts]
   end
 
-  def build_response(packet, function, layouts, arch)
-    case arch
+  def build_response(packet, function, layouts, client)
+    case client.native_arch
     when ARCH_X64
       native = 'Q<'
     when ARCH_X86
       native = 'V'
     else
-      raise NotImplementedError, 'Unsupported architecture (must be ARCH_X86 or ARCH_X64)'
+      raise NotImplementedError, 'Unsupported architecture for railgun (must be ARCH_X86 or ARCH_X64)'
     end
 
     rec_inout_buffers = packet.get_tlv_value(TLV_TYPE_RAILGUN_BACK_BUFFERBLOB_INOUT)
@@ -298,7 +306,7 @@ class Library
     # process return value
     case function.return_type
       when 'LPVOID', 'ULONG_PTR'
-        if arch == ARCH_X64
+        if client.native_arch == ARCH_X64
           return_hash['return'] = rec_return_value
         else
           return_hash['return'] = rec_return_value & 0xffffffff
@@ -313,6 +321,20 @@ class Library
         return_hash['return'] = (rec_return_value != 0)
       when 'VOID'
         return_hash['return'] = nil
+      when 'PCHAR'
+        return_hash['return'] = rec_return_value == 0 ? nil : client.railgun.util.read_string(rec_return_value)
+        return_hash['&return'] = rec_return_value
+      when 'PWCHAR'
+        return_hash['return'] = rec_return_value == 0 ? nil : client.railgun.util.read_wstring(rec_return_value)
+        return_hash['&return'] = rec_return_value
+      when 'PULONG_PTR'
+        if client.native_arch == ARCH_X64
+          return_hash['return'] = rec_return_value == 0 ? nil : client.railgun.util.memread(rec_return_value, 8)&.unpack1('Q<')
+          return_hash['&return'] = rec_return_value
+        else
+          return_hash['return'] = rec_return_value == 0 ? nil : client.railgun.util.memread(rec_return_value, 4)&.unpack1('V')
+          return_hash['&return'] = rec_return_value
+        end
       else
         raise "unexpected return type: #{function.return_type}"
     end
@@ -372,7 +394,7 @@ class Library
 
     response = client.send_request(request)
 
-    build_response(response, function, layouts, client.native_arch)
+    build_response(response, function, layouts, client)
   end
 
   # perform type conversions as necessary to reduce the datatypes to their primitives

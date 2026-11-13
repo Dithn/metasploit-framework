@@ -24,6 +24,10 @@ module Interactive
     # A nil is passed in the case of non-stream interactive sessions (Meterpreter)
     if rstream
       self.rstream = rstream
+      begin
+        @peer_info = rstream.peerinfo
+      rescue ::Exception
+      end
     end
     super()
   end
@@ -43,7 +47,8 @@ module Interactive
     return @local_info if @local_info
     begin
       @local_info = rstream.localinfo
-    rescue ::Exception
+    rescue ::Exception => e
+      elog('Interactive#tunnel_local error', error: e)
       @local_info = '127.0.0.1'
     end
   end
@@ -55,8 +60,16 @@ module Interactive
     return @peer_info if @peer_info
     begin
       @peer_info = rstream.peerinfo
-    rescue ::Exception
+    rescue ::Exception => e
+      elog('Interactive#tunnel_peer error', error: e)
       @peer_info = '127.0.0.1'
+    end
+  end
+
+  def comm_channel
+    return @comm_info if @comm_info
+    if rstream.respond_to?(:channel) && rstream.channel.respond_to?(:client)
+      @comm_info = "via session #{rstream.channel.client.sid}" if rstream.channel.client.respond_to?(:sid)
     end
   end
 
@@ -112,14 +125,14 @@ protected
       # Judge the user wants to abort the reverse shell session
       # Or just want to abort the process running on the target machine
       # If the latter, just send ASCII Control Character \u0003 (End of Text) to the socket fd
-      # The character will be handled by the line dicipline program of the pseudo-terminal on target machine
-      # It will send the SEGINT singal to the foreground process
+      # The character will be handled by the line discipline program of the pseudo-terminal on target machine
+      # It will send the SEGINT signal to the foreground process
       if !intent
         # TODO: Check the shell is interactive or not
         # If the current shell is not interactive, the ASCII Control Character will not work
-        if !(self.platform=="windows" && self.type =="shell")
+        if abort_foreground_supported
           print_status("Aborting foreground process in the shell session")
-          self.rstream.write("\u0003")
+          abort_foreground
         end
         return
       end
@@ -127,6 +140,14 @@ protected
       # The user hit ctrl-c while we were handling a ctrl-c. Ignore
     end
     true
+  end
+
+  def abort_foreground_supported
+    true
+  end
+
+  def abort_foreground
+    self.rstream.write("\u0003")
   end
 
   def _usr1

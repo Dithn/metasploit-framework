@@ -12,6 +12,7 @@ RSpec.describe "Metasploit's json-rpc" do
   include_context 'Msf::DBManager'
   include_context 'Metasploit::Framework::Spec::Constants cleaner'
   include_context 'Msf::Framework#threads cleaner', verify_cleanup_required: false
+  include_context 'wait_for_expect'
 
   let(:health_check_url) { '/api/v1/health' }
   let(:rpc_url) { '/api/v1/json-rpc' }
@@ -19,14 +20,35 @@ RSpec.describe "Metasploit's json-rpc" do
   let(:a_valid_result_uuid) { { result: hash_including({ uuid: match(/\w+/) }) } }
   let(:app) { ::Msf::WebServices::JsonRpcApp.new }
 
+  # Static token used to authenticate all requests in this suite.
+  # Using the api_token path avoids needing a real DB user for the non-auth tests.
+  let(:suite_token) { 'test_suite_token_abc123' }
+
+  # Sinatra settings are class level, so capture the real values and restore them
+  # afterwards rather than resetting to nil, which would discard the environment
+  # derived configuration for the remainder of the process.
+  let!(:original_api_token) { ::Msf::WebServices::JsonRpcApp.settings.api_token }
+  let!(:original_db_manager) { ::Msf::WebServices::JsonRpcApp.settings.db_manager }
+
   before(:example) do
     framework.modules.add_module_path(File.join(FILE_FIXTURES_PATH, 'json_rpc'))
     app.settings.framework = framework
+    # Rack 3 / rack-test requires explicit content type for raw JSON bodies
+    header 'Content-Type', 'application/json'
+
+    # Configure auth directly rather than calling boot!, which is covered by its own
+    # unit spec. Here we just want the settings in a known state so the HTTP layer
+    # behaves as it would in production, with auth enforced via a static token.
+    app.settings.api_token = suite_token
+    app.settings.db_manager = nil
+    header 'Authorization', "Bearer #{suite_token}"
   end
 
   after(:example) do
     # Sinatra's settings are implemented as a singleton, and must be explicitly reset between runs
     app.settings.dispatchers.clear
+    app.settings.api_token = original_api_token
+    app.settings.db_manager = original_db_manager
   end
 
   def report_host(host)
@@ -123,24 +145,129 @@ RSpec.describe "Metasploit's json-rpc" do
     end
   end
 
-  # Waits until the given expectations are all true. This function executes the given block,
-  # and if a failure occurs it will be retried `retry_count` times before finally failing.
-  # This is useful to expect against asynchronous/eventually consistent systems.
-  #
-  # @param retry_count [Integer] The total amount of times to retry the given expectation
-  # @param sleep_duration [Integer] The total amount of time to sleep before trying again
-  def wait_for_expect(retry_count = 20, sleep_duration = 0.5)
-    failure_count = 0
+  describe 'authentication' do
+    context 'when a valid Bearer token is provided' do
+      it 'allows the request through' do
+        # suite_token header already set by outer before block
+        post rpc_url, { jsonrpc: '2.0', method: 'health.check', id: 1, params: [] }.to_json
+        expect(last_response.status).not_to eq(401)
+      end
+    end
 
-    begin
-      yield
-    rescue RSpec::Expectations::ExpectationNotMetError
-      failure_count += 1
-      if failure_count < retry_count
-        sleep sleep_duration
-        retry
-      else
-        raise
+    context 'when no token is provided' do
+      before { header 'Authorization', nil }
+
+      it 'returns 401' do
+        post rpc_url, { jsonrpc: '2.0', method: 'health.check', id: 1, params: [] }.to_json
+        expect(last_response.status).to eq(401)
+      end
+
+      it 'returns a JSON error body' do
+        post rpc_url, { jsonrpc: '2.0', method: 'health.check', id: 1, params: [] }.to_json
+        json = JSON.parse(last_response.body)
+        expect(json).to have_key('error')
+        expect(json['error']['message']).to include('Authenticate to access this resource')
+      end
+    end
+
+    context 'when an invalid token is provided' do
+      before { header 'Authorization', 'Bearer invalid_token' }
+
+      it 'returns 401' do
+        post rpc_url, { jsonrpc: '2.0', method: 'health.check', id: 1, params: [] }.to_json
+        expect(last_response.status).to eq(401)
+      end
+    end
+
+    # Query strings end up in access logs, so a token is never accepted from one -
+    # not even a correct one.
+    context 'when the token is supplied as a query parameter' do
+      before { header 'Authorization', nil }
+
+      it 'returns 401 even for the correct token' do
+        post "#{rpc_url}?token=#{suite_token}", { jsonrpc: '2.0', method: 'health.check', id: 1, params: [] }.to_json
+        expect(last_response.status).to eq(401)
+      end
+
+      it 'does not echo the supplied token back in the response' do
+        post "#{rpc_url}?token=#{suite_token}", { jsonrpc: '2.0', method: 'health.check', id: 1, params: [] }.to_json
+        expect(last_response.body).not_to include(suite_token)
+      end
+    end
+
+    context 'when the Authorization header uses an unsupported scheme' do
+      before { header 'Authorization', "Basic #{suite_token}" }
+
+      it 'returns 401' do
+        post rpc_url, { jsonrpc: '2.0', method: 'health.check', id: 1, params: [] }.to_json
+        expect(last_response.status).to eq(401)
+      end
+    end
+
+    # A blank configured token must never match a blank supplied token, otherwise
+    # anyone can authenticate with an empty credential.
+    context 'when the configured token is blank' do
+      before do
+        app.settings.api_token = ''
+      end
+
+      it 'returns 401 for an empty Bearer token' do
+        header 'Authorization', 'Bearer '
+        post rpc_url, { jsonrpc: '2.0', method: 'health.check', id: 1, params: [] }.to_json
+        expect(last_response.status).to eq(401)
+      end
+
+      it 'returns 401 for a whitespace Bearer token' do
+        header 'Authorization', 'Bearer    '
+        post rpc_url, { jsonrpc: '2.0', method: 'health.check', id: 1, params: [] }.to_json
+        expect(last_response.status).to eq(401)
+      end
+    end
+
+    # boot! normally guarantees one of these is configured, but the auth layer must
+    # fail closed with a 401 rather than a 500 if it was bypassed.
+    context 'when neither a token nor a database is configured' do
+      before do
+        app.settings.api_token = nil
+        app.settings.db_manager = nil
+      end
+
+      it 'returns 401' do
+        post rpc_url, { jsonrpc: '2.0', method: 'health.check', id: 1, params: [] }.to_json
+        expect(last_response.status).to eq(401)
+      end
+    end
+
+    # Validating a token against database users needs the local database - users(persistence_token:)
+    # and create_new_user_token are not part of the remote data service API. That is the same
+    # reason boot! refuses database backed authentication when a remote data service is
+    # configured, so this path does not exist under REMOTE_DB rather than merely being awkward
+    # to set up there.
+    context 'when a DB user token is used', if: ENV['REMOTE_DB'].nil? do
+      let(:user) do
+        Mdm::User.where(username: 'test_user').first_or_create!(
+          crypted_password: BCrypt::Password.create('test_password'),
+          admin: false
+        )
+      end
+      let(:user_token) { framework.db.create_new_user_token(id: user.id, token_length: 40) }
+
+      before do
+        # Mirrors the production wiring in boot!, which stores framework.db itself.
+        app.settings.api_token = nil
+        app.settings.db_manager = framework.db
+      end
+
+      it 'allows requests with the correct user token' do
+        header 'Authorization', "Bearer #{user_token}"
+        post rpc_url, { jsonrpc: '2.0', method: 'health.check', id: 1, params: [] }.to_json
+        expect(last_response.status).not_to eq(401)
+      end
+
+      it 'rejects requests with an invalid token' do
+        header 'Authorization', 'Bearer invalid_token'
+        post rpc_url, { jsonrpc: '2.0', method: 'health.check', id: 1, params: [] }.to_json
+        expect(last_response.status).to eq(401)
       end
     end
   end
@@ -246,12 +373,40 @@ RSpec.describe "Metasploit's json-rpc" do
             result: {
               code: 'safe',
               details: {},
+              vuln: {},
               message: 'The target is not exploitable.',
               reason: nil
             }
           }
         }
         expect(last_json_response).to include(expected_completed_response)
+      end
+    end
+
+    context 'when the module does not support a check method' do
+      let(:module_name) { 'scanner/http/title' }
+
+      # rpc_check short-circuits with error(500, Msf::Exploit::CheckCode::Unsupported.message)
+      # when the target module lacks a check method. That raises Msf::RPC::Exception,
+      # which the JSON-RPC dispatcher wraps into a well-formed application-server-error
+      # envelope and returns as HTTP 200 (per the JSON-RPC 2.0 convention that error
+      # responses share the transport status of successful responses).
+      it 'returns a JSON-RPC application-server-error envelope' do
+        create_job
+        expect(last_response).to be_ok
+
+        expected_error_response = {
+          jsonrpc: '2.0',
+          error: {
+            code: -32000,
+            data: {
+              code: 500
+            },
+            message: 'Application server error: This module does not support check.'
+          },
+          id: 1
+        }
+        expect(last_json_response).to include(expected_error_response)
       end
     end
 
@@ -291,8 +446,7 @@ RSpec.describe "Metasploit's json-rpc" do
 
       before(:each) do
         allow_any_instance_of(::Msf::Auxiliary::Scanner).to receive(:check) do
-          res = nil
-          res.body
+          raise 'Unexpected module error'
         end
       end
 
@@ -313,7 +467,7 @@ RSpec.describe "Metasploit's json-rpc" do
         expected_error_response = {
           result: {
             status: 'errored',
-            error: "undefined method `body' for nil:NilClass"
+            error: "Unexpected module error"
           }
         }
         expect(last_json_response).to include(expected_error_response)
@@ -443,7 +597,6 @@ RSpec.describe "Metasploit's json-rpc" do
       let(:vuln_refs) do
         %w[
           CVE-2017-0143
-          CVE-2016-3088
         ]
       end
 
@@ -462,29 +615,41 @@ RSpec.describe "Metasploit's json-rpc" do
           expected_response = {
             jsonrpc: '2.0',
             result: {
-              host: [
-                {
-                  address: host_ip,
-                  modules: [
-                    {
-                      mname: 'exploit/multi/http/apache_activemq_upload_jsp',
-                      mtype: 'exploit'
+              host: {
+                address: host_ip,
+                modules: [
+                  {
+                    mname: "exploit/windows/smb/ms17_010_eternalblue",
+                    mtype: "exploit",
+                    options: {
+                      invalid: [],
+                      missing: [],
                     },
-                    {
-                      mtype: 'exploit',
-                      mname: 'exploit/windows/smb/ms17_010_eternalblue'
+                    state: "READY_FOR_TEST",
+                    description: "ready for testing"
+                  },
+                  {
+                    mname: "exploit/windows/smb/ms17_010_psexec",
+                    mtype: "exploit",
+                    options: {
+                      invalid: [],
+                      missing: [ "credential" ],
                     },
-                    {
-                      mtype: 'exploit',
-                      mname: 'exploit/windows/smb/ms17_010_psexec',
+                    state: "REQUIRES_CRED",
+                    description: "credentials are required"
+                  },
+                  {
+                    mname: "exploit/windows/smb/smb_doublepulsar_rce",
+                    mtype: "exploit",
+                    options: {
+                      invalid: [],
+                      missing: [],
                     },
-                    {
-                      mtype: 'exploit',
-                      mname: 'exploit/windows/smb/smb_doublepulsar_rce',
-                    }
-                  ]
-                }
-              ]
+                    state: "READY_FOR_TEST",
+                    description: "ready for testing"
+                  }
+                ]
+              }
             },
             id: 1
           }
@@ -512,29 +677,41 @@ RSpec.describe "Metasploit's json-rpc" do
           expected_response = {
             jsonrpc: '2.0',
             result: {
-              host: [
-                {
-                  address: host_ip,
-                  modules: [
-                    {
-                      mname: 'exploit/multi/http/apache_activemq_upload_jsp',
-                      mtype: 'exploit'
+              host: {
+                address: host_ip,
+                modules: [
+                  {
+                    mname: "exploit/windows/smb/ms17_010_eternalblue",
+                    mtype: "exploit",
+                    options: {
+                      invalid: [],
+                      missing: [ "payload_match" ],
                     },
-                    {
-                      mtype: 'exploit',
-                      mname: 'exploit/windows/smb/ms17_010_eternalblue'
+                    state: "MISSING_PAYLOAD",
+                    description: "none of the requested payloads match"
+                  },
+                  {
+                    mname: "exploit/windows/smb/ms17_010_psexec",
+                    mtype: "exploit",
+                    options: {
+                      invalid: [],
+                      missing: [ "credential", "payload_match" ],
                     },
-                    {
-                      mtype: 'exploit',
-                      mname: 'exploit/windows/smb/ms17_010_psexec',
+                    state: "REQUIRES_CRED",
+                    description: "credentials are required, none of the requested payloads match"
+                  },
+                  {
+                    mname: "exploit/windows/smb/smb_doublepulsar_rce",
+                    mtype: "exploit",
+                    options: {
+                      invalid: [],
+                      missing: ["payload_match"],
                     },
-                    {
-                      mtype: 'exploit',
-                      mname: 'exploit/windows/smb/smb_doublepulsar_rce',
-                    }
-                  ]
-                }
-              ]
+                    state: "MISSING_PAYLOAD",
+                    description: "none of the requested payloads match"
+                  }
+                ]
+              }
             },
             id: 1
           }
@@ -543,9 +720,11 @@ RSpec.describe "Metasploit's json-rpc" do
             {
               workspace: 'default',
               host: host_ip,
-              payloads: [
-                'java/meterpreter/reverse_http'
-              ]
+              analyze_options: {
+                payloads: [
+                  'linux/x86/meterpreter_reverse_http'
+                ]
+              }
             }
           )
           expect(last_json_response).to include(expected_response)
@@ -568,12 +747,10 @@ RSpec.describe "Metasploit's json-rpc" do
         expected_response = {
           jsonrpc: '2.0',
           result: {
-            host: [
-              {
-                address: host_ip,
-                modules: []
-              }
-            ]
+            host: {
+              address: host_ip,
+              modules: []
+            }
           },
           id: 1
         }

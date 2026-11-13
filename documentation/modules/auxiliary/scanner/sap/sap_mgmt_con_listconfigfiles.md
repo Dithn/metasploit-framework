@@ -5,7 +5,7 @@ This applies to all versions of SAP software.
 
 The SAP Management Console (SAP MC) provides a common framework for centralized system management. It allows you to monitor and perform basic administration tasks on the SAP system centrally, which simplifies system administration. (https://help.sap.com/doc/saphelp_nwpi711/7.1.1/en-US/fa/ec218eb89b4424a9a0b423b0643952/frameset.htm)
 
-SAP exposes an API on port tcp/50013 with the SOAP Management Console. Some webmethods are authenticated with a valid login/password and others are unauthenticated and reacheable by default.
+SAP exposes an API on port tcp/50013 with the SOAP Management Console. Some webmethods are authenticated with a valid login/password and others are unauthenticated and reachable by default.
 
 With this module you can list the config files that SAP loads when starts the SAP server. This unauthenticated information disclosure can be used in a more advanced attack to get knowledge about in which paths SAP stores the config files to, for example, retrieve sensitive data or trojanize the startup process.
 
@@ -22,13 +22,13 @@ With this module you can list the config files that SAP loads when starts the SA
 
 ## Options
 
-  **RHOSTS**: Set up which server or servers do you want to test
+### RHOSTS: Set up which server or servers do you want to test
 
-  **RPORT**: Port tcp/50013 set up by default
+### RPORT: Port tcp/50013 set up by default
 
   In case of more advanced deployments you can set up the SSL parameters here:
 
-  **SSL**: Set to ```true```
+### SSL: Set to ```true```
 
 
 ## Scenarios
@@ -37,8 +37,8 @@ With this module you can list the config files that SAP loads when starts the SA
 
 
   ```
-msf5 > use auxiliary/scanner/sap/sap_mgmt_con_listconfigfiles
-msf5 auxiliary(scanner/sap/sap_mgmt_con_listconfigfiles) > show options
+msf > use auxiliary/scanner/sap/sap_mgmt_con_listconfigfiles
+msf auxiliary(scanner/sap/sap_mgmt_con_listconfigfiles) > show options
 
 Module options (auxiliary/scanner/sap/sap_mgmt_con_listconfigfiles):
 
@@ -52,9 +52,9 @@ Module options (auxiliary/scanner/sap/sap_mgmt_con_listconfigfiles):
    URI      /                no        Path to the SAP Management Console 
    VHOST                     no        HTTP server virtual host
 
- msf5 auxiliary(scanner/sap/sap_mgmt_con_listconfigfiles) > set RHOSTS 192.168.10.45
+ msf auxiliary(scanner/sap/sap_mgmt_con_listconfigfiles) > set RHOSTS 192.168.10.45
  RHOSTS => 192.168.10.45
- msf5 auxiliary(scanner/sap/sap_mgmt_con_listconfigfiles) > run
+ msf auxiliary(scanner/sap/sap_mgmt_con_listconfigfiles) > run
  [...]
 
   ```

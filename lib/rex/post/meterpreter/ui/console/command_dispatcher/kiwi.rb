@@ -57,7 +57,7 @@ class Console::CommandDispatcher::Kiwi
   #
   def commands
     {
-      'kiwi_cmd'              => 'Execute an arbitary mimikatz command (unparsed)',
+      'kiwi_cmd'              => 'Execute an arbitrary mimikatz command (unparsed)',
       'dcsync'                => 'Retrieve user account information via DCSync (unparsed)',
       'dcsync_ntlm'           => 'Retrieve user account NTLM hash, SID and RID via DCSync',
       'creds_wdigest'         => 'Retrieve WDigest creds (parsed)',
@@ -174,7 +174,7 @@ class Console::CommandDispatcher::Kiwi
   end
 
   def cmd_dcsync(*args)
-    return unless check_is_domain_user
+    check_is_domain_user
 
     if args.length != 1
       print_line('Usage: dcsync <DOMAIN\user>')
@@ -186,7 +186,7 @@ class Console::CommandDispatcher::Kiwi
   end
 
   def cmd_dcsync_ntlm(*args)
-    return unless check_is_domain_user
+    check_is_domain_user
 
     if args.length != 1
       print_line('Usage: dcsync_ntlm <DOMAIN\user>')
@@ -541,7 +541,7 @@ protected
   end
 
 
-  def check_is_domain_user(msg='Running as SYSTEM, function will not work.')
+  def check_is_domain_user(msg='Running as SYSTEM; function will only work if this computer account has replication privileges (e.g. Domain Controller)')
     if client.sys.config.is_system?
       print_warning(msg)
       return false
@@ -676,6 +676,11 @@ protected
   end
 
   def report_creds(type, user, domain, secret)
+    if client&.db_record&.id.nil?
+      wlog('The session is not stored correctly in the database. Something went wrong.')
+      return
+    end
+
     credential_data = {
         origin_type: :session,
         post_reference_name: 'kiwi',

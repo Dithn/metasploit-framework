@@ -7,25 +7,42 @@ class MetasploitModule < Msf::Post
   include Msf::Post::File
   include Msf::Post::Windows::Priv
 
-  def initialize(info={})
-    super(update_info(info,
-        'Name'          => 'Multi Manage File Compressor',
-        'Description'   => %q{
+  def initialize(info = {})
+    super(
+      update_info(
+        info,
+        'Name' => 'Multi Manage File Compressor',
+        'Description' => %q{
           This module zips a file or a directory. On Linux, it uses the zip command.
           On Windows, it will try to use remote target's 7Zip if found. If not, it falls
           back to its Windows Scripting Host.
         },
-        'License'       => MSF_LICENSE,
-        'Author'        => [ 'sinn3r' ],
-        'Platform'      => [ 'win', 'linux' ],
-        'SessionTypes'  => [ 'meterpreter', 'shell' ]
-    ))
+        'License' => MSF_LICENSE,
+        'Author' => [ 'sinn3r' ],
+        'Platform' => [ 'win', 'linux' ],
+        'SessionTypes' => [ 'meterpreter', 'shell' ],
+        'Compat' => {
+          'Meterpreter' => {
+            'Commands' => %w[
+              stdapi_sys_config_rev2self
+              stdapi_sys_config_steal_token
+            ]
+          }
+        },
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [],
+          'Reliability' => []
+        }
+      )
+    )
 
     register_options(
       [
         OptString.new('DESTINATION', [true, 'The destination path']),
         OptString.new('SOURCE', [true, 'The directory or file to compress'])
-      ])
+      ]
+    )
   end
 
   def get_program_file_path
@@ -37,10 +54,10 @@ class MetasploitModule < Msf::Post
   end
 
   def wsh_script(dst, src)
-    script_file = File.read(File.join(Msf::Config.data_directory, "post", "zip", "zip.js"))
-    src.gsub!("\\", "\\\\\\")
-    dst.gsub!("\\", "\\\\\\")
-    script_file << "zip(\"#{src}\",\"#{dst}\");".force_encoding("UTF-8")
+    script_file = File.read(File.join(Msf::Config.data_directory, 'post', 'zip', 'zip.js'))
+    src.gsub!('\\', '\\\\\\')
+    dst.gsub!('\\', '\\\\\\')
+    script_file << "zip(\"#{src}\",\"#{dst}\");".force_encoding('UTF-8')
     script_file
   end
 
@@ -89,7 +106,7 @@ class MetasploitModule < Msf::Post
     script = wsh_script(datastore['DESTINATION'], datastore['SOURCE'])
     tmp_path = "#{get_env('TEMP')}\\zip.js"
     print_status("script file uploaded to #{tmp_path}")
-    write_file(tmp_path, script.encode("UTF-16LE"))
+    write_file(tmp_path, script.encode('UTF-16LE'))
     cmd_exec("cscript.exe #{tmp_path}")
   end
 
@@ -138,4 +155,3 @@ class MetasploitModule < Msf::Post
     end
   end
 end
-

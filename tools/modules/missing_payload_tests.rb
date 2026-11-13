@@ -26,14 +26,15 @@ options_set_by_ancestor_reference_name = Hash.new { |hash, ancestor_reference_na
   hash[ancestor_reference_name] = Set.new
 }
 
-framework.payloads.each { |reference_name, payload_class|
+framework.payloads.each_module { |reference_name, payload_class|
+  next unless payload_class
   module_ancestors = payload_class.ancestors.select { |ancestor|
     # need to use try because name may be nil for anonymous Modules
     ancestor.name.try(:start_with?, 'Msf::Modules::')
   }
   ancestor_reference_names = module_ancestors.map { |module_ancestor|
     unpacked_module_ancestor_full_name = module_ancestor.name.sub(/^Msf::Modules::Mod/, '')
-                                                             .sub(/::MetasploitModule/, '')
+                                                             .sub('::MetasploitModule', '')
     module_ancestor_full_name = [unpacked_module_ancestor_full_name].pack("H*")
     module_ancestor_full_name.sub(%r{^payload/}, '')
   }

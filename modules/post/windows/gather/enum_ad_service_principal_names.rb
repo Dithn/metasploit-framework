@@ -3,31 +3,36 @@
 # Current source: https://github.com/rapid7/metasploit-framework
 ##
 
-
 class MetasploitModule < Msf::Post
   include Msf::Auxiliary::Report
   include Msf::Post::Windows::LDAP
 
-  def initialize(info={})
-    super(update_info(info,
-      'Name'         => 'Windows Gather Active Directory Service Principal Names',
-      'Description'  => %Q{
-        This module will enumerate servicePrincipalName in the default AD directory
-        where the user is a member of the Domain Admins group.
-      },
-      'License'      => MSF_LICENSE,
-      'Author'       =>
-        [
-          'Ben Campbell', #Metasploit Module
-          'Scott Sutherland' #Original Powershell Code
+  def initialize(info = {})
+    super(
+      update_info(
+        info,
+        'Name' => 'Windows Gather Active Directory Service Principal Names',
+        'Description' => %q{
+          This module will enumerate servicePrincipalName in the default AD directory
+          where the user is a member of the Domain Admins group.
+        },
+        'License' => MSF_LICENSE,
+        'Author' => [
+          'Ben Campbell', # Metasploit Module
+          'Scott Sutherland' # Original PowerShell Code
         ],
-      'Platform'     => [ 'win' ],
-      'SessionTypes' => [ 'meterpreter' ],
-      'References'   =>
-        [
+        'Platform' => [ 'win' ],
+        'SessionTypes' => [ 'meterpreter' ],
+        'References' => [
           ['URL', 'https://www.netspi.com/blog/entryid/214/faster-domain-escalation-using-ldap'],
-        ]
-    ))
+        ],
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'Reliability' => [],
+          'SideEffects' => []
+        }
+      )
+    )
 
     register_options([
       OptString.new('FILTER', [true, 'Search filter, DOM_REPL will be automatically replaced', '(&(objectCategory=user)(memberOf=CN=Domain Admins,CN=Users,DOM_REPL))'])
@@ -37,10 +42,13 @@ class MetasploitModule < Msf::Post
   end
 
   def run
+    hostname = sysinfo.nil? ? cmd_exec('hostname') : sysinfo['Computer']
+    print_status("Running module against #{hostname} (#{session.session_host})")
+
     domain ||= datastore['DOMAIN']
     domain ||= get_domain
 
-    fields = ['cn','servicePrincipalName']
+    fields = ['cn', 'servicePrincipalName']
 
     search_filter = datastore['FILTER']
     max_search = datastore['MAX_SEARCH']
@@ -48,11 +56,9 @@ class MetasploitModule < Msf::Post
     # This needs checking against LDAP improvements PR.
     dn = get_default_naming_context(domain)
 
-    if dn.blank?
-      fail_with(Failure::Unknown, "Unable to retrieve the Default Naming Context")
-    end
+    fail_with(Failure::Unknown, 'Unable to retrieve the Default Naming Context') if dn.blank?
 
-    search_filter.gsub!('DOM_REPL',dn)
+    search_filter.gsub!('DOM_REPL', dn)
 
     begin
       q = query(search_filter, max_search, fields, domain)
@@ -62,27 +68,25 @@ class MetasploitModule < Msf::Post
       return
     end
 
-    if q.nil? or q[:results].empty?
-      return
-    end
+    return if q.nil? || q[:results].empty?
 
-    fields << "Service"
-    fields << "Host"
+    fields << 'Service'
+    fields << 'Host'
 
     # Results table holds raw string data
     results_table = Rex::Text::Table.new(
-      'Header'     => "Service Principal Names",
-      'Indent'     => 1,
-      'SortIndex'  => -1,
-      'Columns'    => ['cn', 'Service', 'Host']
+      'Header' => 'Service Principal Names',
+      'Indent' => 1,
+      'SortIndex' => -1,
+      'Columns' => ['cn', 'Service', 'Host']
     )
 
     q[:results].each do |result|
       rows = parse_result(result, fields)
-      unless rows.nil?
-        rows.each do |row|
-          results_table << row
-        end
+      next if rows.nil?
+
+      rows.each do |row|
+        results_table << row
       end
     end
 
@@ -95,11 +99,12 @@ class MetasploitModule < Msf::Post
     rows = []
     row = []
 
-    0.upto(fields.length-1) do |i|
-      field = (result[i][:value].nil? ? "" : result[i][:value])
+    0.upto(fields.length - 1) do |i|
+      field = (result[i][:value].nil? ? '' : result[i][:value])
 
       if fields[i] == 'servicePrincipalName'
         break if field.blank?
+
         spns = field.split(',')
         spns.each do |spn|
           new_row = row.dup
@@ -115,10 +120,8 @@ class MetasploitModule < Msf::Post
       else
         row << field
       end
-
     end
 
     rows
   end
 end
-

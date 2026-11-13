@@ -59,9 +59,7 @@ class RexUDPTransport
 
     def send(data, host, port, flags = 0)
         begin
-            @socket.sendto(data, host, port, flags)
-        rescue NoMethodError
-            @socket.send(data, 0, host, port)
+            @socket.send(data, flags, host, port)
         rescue ::Errno::EISCONN
             @socket.write(data)
         end
@@ -318,7 +316,7 @@ class Manager
     # specific_trap: An integer representing the specific trap type for
     # an enterprise-specific trap.
     #
-    # timestamp: An integer respresenting the number of hundredths of
+    # timestamp: An integer representing the number of hundredths of
     # a second that this system has been up.
     #
     # object_list: A list of additional varbinds to send with the trap.
@@ -348,7 +346,7 @@ class Manager
     ##
     # Sends an SNMPv2c style trap.
     #
-    # sys_up_time: An integer respresenting the number of hundredths of
+    # sys_up_time: An integer representing the number of hundredths of
     # a second that this system has been up.
     #
     # trap_oid: An ObjectId or String with the OID identifier for this
@@ -365,7 +363,7 @@ class Manager
     ##
     # Sends an inform request using the supplied varbind list.
     #
-    # sys_up_time: An integer respresenting the number of hundredths of
+    # sys_up_time: An integer representing the number of hundredths of
     # a second that this system has been up.
     #
     # trap_oid: An ObjectId or String with the OID identifier for this

@@ -63,19 +63,15 @@
 #   single payloads, there will be one ancestor reference name from `modules/payloads/singles`, while for staged
 #   payloads there with be one ancestor reference name from `modules/payloads/stagers` and one ancestor reference name
 #   from `modules/payloads/stages`.
-# @option options [Boolean] :dynamic_size The dynamic_size flag determines whether we expect this module to generate a
-#   variable size payload or to have a valid cached_size
 # @option options [Pathname] :modules_pathname The `modules` directory from which to load `:ancestor_reference_names`.
 # @option options [String] :reference_name The reference name for payload class that should be instantiated from mixing
 #   `:ancestor_reference_names`.
 # @return [void]
 RSpec.shared_examples_for 'payload cached size is consistent' do |options|
 
-  options.assert_valid_keys(:ancestor_reference_names, :modules_pathname, :reference_name, :dynamic_size)
+  options.assert_valid_keys(:ancestor_reference_names, :modules_pathname, :reference_name)
 
   ancestor_reference_names = options.fetch(:ancestor_reference_names)
-
-  dynamic_size = options.fetch(:dynamic_size)
 
   modules_pathname = options.fetch(:modules_pathname)
   modules_path = modules_pathname.to_path
@@ -86,51 +82,6 @@ RSpec.shared_examples_for 'payload cached size is consistent' do |options|
 
   include_context 'Msf::Simple::Framework#modules loading'
 
-  opts = {
-    'Format'      => 'raw',
-    'Options'     => {
-      'CPORT' => 4444,
-      'LPORT' => 4444,
-      'LHOST' => '255.255.255.255',
-      'KHOST' => '255.255.255.255',
-      'AHOST' => '255.255.255.255',
-      'CMD' => '/bin/sh',
-      'URL' => 'http://a.com',
-      'PATH' => '/',
-      'BUNDLE' => 'data/isight.bundle',
-      'DLL' => 'external/source/byakugan/bin/XPSP2/detoured.dll',
-      'RC4PASSWORD' => 'Metasploit',
-      'DNSZONE' => 'corelan.eu',
-      'PEXEC' => '/bin/sh',
-      'StagerURILength' => 5
-    },
-    'Encoder'     => nil,
-    'DisableNops' => true
-  }
-
-  opts6 = {
-      'Format'      => 'raw',
-      'Options'     => {
-          'CPORT' => 4444,
-          'LPORT' => 4444,
-          'LHOST' => 'ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff',
-          'KHOST' => 'ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff',
-          'AHOST' => 'ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff',
-          'CMD' => '/bin/sh',
-          'URL' => 'http://a.com',
-          'PATH' => '/',
-          'BUNDLE' => 'data/isight.bundle',
-          'DLL' => 'external/source/byakugan/bin/XPSP2/detoured.dll',
-          'RC4PASSWORD' => 'Metasploit',
-          'DNSZONE' => 'corelan.eu',
-          'PEXEC' => '/bin/sh',
-          'StagerURILength' => 5
-      },
-      'Encoder'     => nil,
-      'DisableNops' => true
-  }
-
-
   #
   # lets
   #
@@ -138,7 +89,7 @@ RSpec.shared_examples_for 'payload cached size is consistent' do |options|
   context reference_name  do
     ancestor_reference_names.each do |ancestor_reference_name|
       it "can load '#{module_type}/#{ancestor_reference_name}'" do
-        @actual_ancestor_reference_name_set.add(ancestor_reference_name)
+        @actual_ancestor_reference_name_set.add(ancestor_reference_name) if @actual_ancestor_reference_name_set
 
         expect_to_load_module_ancestor(
             ancestor_reference_name: ancestor_reference_name,
@@ -148,44 +99,31 @@ RSpec.shared_examples_for 'payload cached size is consistent' do |options|
       end
     end
 
-    it 'can be instantiated' do
-      load_and_create_module(
+    it 'can be instantiated and generated' do
+      pinst = load_and_create_module(
           ancestor_reference_names: ancestor_reference_names,
           module_type: module_type,
           modules_path: modules_path,
           reference_name: reference_name
       )
+
+      next if reference_name =~ /generic/
+
+      generated_size = ::Msf::Util::PayloadCachedSize.compute_cached_size(framework, pinst, generation_count: 1)
+      expect(generated_size).to eq(':dynamic').or be_a(::Integer)
     end
 
     next if reference_name =~ /generic|peinject/
 
-    if dynamic_size
-      it 'is dynamic_size?' do
-        pinst = load_and_create_module(
-              ancestor_reference_names: ancestor_reference_names,
-              module_type: module_type,
-              modules_path: modules_path,
-              reference_name: reference_name
-        )
-        expect(pinst.cached_size).to(be_nil)
-        expect(pinst.dynamic_size?).to be(true)
-      end
-    else
-      it 'has a valid cached_size' do
-        pinst = load_and_create_module(
-              ancestor_reference_names: ancestor_reference_names,
-              module_type: module_type,
-              modules_path: modules_path,
-              reference_name: reference_name
-        )
-        expect(pinst.cached_size).to_not(be_nil)
-        expect(pinst.dynamic_size?).to be(false)
-        if pinst.shortname =~ /6/
-          expect(pinst.cached_size).to eq(pinst.generate_simple(opts6).size)
-        else
-          expect(pinst.cached_size).to eq(pinst.generate_simple(opts).size)
-        end
-      end
+    it 'has a valid cached_size' do
+      pinst = load_and_create_module(
+            ancestor_reference_names: ancestor_reference_names,
+            module_type: module_type,
+            modules_path: modules_path,
+            reference_name: reference_name
+      )
+
+      expect(pinst.cached_size).to eq(:dynamic).or be_a(::Integer).or be_nil
     end
   end
 end

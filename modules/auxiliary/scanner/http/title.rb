@@ -11,14 +11,14 @@ class MetasploitModule < Msf::Auxiliary
 
   def initialize
     super(
-      'Name'        => 'HTTP HTML Title Tag Content Grabber',
+      'Name' => 'HTTP HTML Title Tag Content Grabber',
       'Description' => %q{
         Generates a GET request to the provided webservers and returns the server header,
         HTML title attribute and location header (if set). This is useful for rapidly identifying
         interesting web applications en mass.
       },
-      'Author'       => 'Stuart Morgan <stuart.morgan[at]mwrinfosecurity.com>',
-      'License'     => MSF_LICENSE,
+      'Author' => 'Stuart Morgan <stuart.morgan[at]mwrinfosecurity.com>',
+      'License' => MSF_LICENSE,
     )
 
     register_options(
@@ -26,7 +26,16 @@ class MetasploitModule < Msf::Auxiliary
         OptBool.new('STORE_NOTES', [ true, 'Store the captured information in notes. Use "notes -t http.title" to view', true ]),
         OptBool.new('SHOW_TITLES', [ true, 'Show the titles on the console as they are grabbed', true ]),
         OptString.new('TARGETURI', [true, 'The base path', '/'])
-      ])
+      ]
+    )
+
+    register_advanced_options(
+      [
+        OptString.new('HttpQueryString', [ false, 'The HTTP query string', nil ]),
+        OptBool.new('FollowRedirect', [ false, 'Follow a HTTP redirect', false ]),
+        OptInt.new('FollowRedirectDepth', [false, 'Follow HTTP redirect depth', 1]),
+      ]
+    )
   end
 
   def run
@@ -39,10 +48,17 @@ class MetasploitModule < Msf::Auxiliary
 
   def run_host(target_host)
     begin
+      http_opts = {
+        'uri' => normalize_uri(target_uri.path),
+        'query' => datastore['HttpQueryString']
+      }
+
       # Send a normal GET request
-      res = send_request_cgi(
-        'uri' => normalize_uri(target_uri.path)
-      )
+      if datastore['FollowRedirect']
+        res = send_request_cgi!(http_opts, datastore['HttpClientTimeout'] || 20, datastore['FollowRedirectDepth'])
+      else
+        res = send_request_cgi(http_opts)
+      end
 
       # If no response, quit now
       if res.nil?
@@ -57,7 +73,7 @@ class MetasploitModule < Msf::Auxiliary
       if !res.headers.nil?
         res.headers.each do |key, val|
           location_header = val if key.downcase == 'location'
-          server_header  = val if key.downcase == 'server'
+          server_header = val if key.downcase == 'server'
         end
       else
         vprint_error("[#{target_host}:#{rport}] No HTTP headers")
@@ -92,8 +108,7 @@ class MetasploitModule < Msf::Auxiliary
         vprint_error("[#{target_host}:#{rport}] No webpage title")
       end
     end
-
-    rescue ::Rex::ConnectionRefused, ::Rex::HostUnreachable, ::Rex::ConnectionTimeout
-    rescue ::Timeout::Error, ::Errno::EPIPE
+  rescue ::Rex::ConnectionRefused, ::Rex::HostUnreachable, ::Rex::ConnectionTimeout
+  rescue ::Timeout::Error, ::Errno::EPIPE
   end
 end

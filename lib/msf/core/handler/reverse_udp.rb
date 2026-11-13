@@ -18,6 +18,8 @@ module Handler
 module ReverseUdp
 
   include Msf::Handler
+  include Msf::Handler::Reverse::Comm
+  include Msf::Handler::Reverse::Bind
 
   #
   # Returns the string representation of the handler type, in this case
@@ -49,6 +51,14 @@ module ReverseUdp
     "udp://#{uri_host}:#{datastore['LPORT']}"
   end
 
+  def comm_string
+    if listener_sock.nil?
+      "(setting up)"
+    else
+      via_string(self.listener_sock.channel.client) if self.listener_sock.respond_to?(:channel) && self.listener_sock.channel.respond_to?(:client)
+    end
+  end
+
   # A URI describing where we are listening
   #
   # @param addr [String] the address that
@@ -68,7 +78,7 @@ module ReverseUdp
 
     register_options(
       [
-        Opt::LHOST,
+        Msf::OptAddressOrHostname.new('LHOST', [true, 'The listen address (an interface may be specified)']),
         Opt::LPORT(4444)
       ], Msf::Handler::ReverseUdp)
 
@@ -77,8 +87,8 @@ module ReverseUdp
       [
         OptAddress.new('ReverseListenerBindAddress', [ false, 'The specific IP address to bind to on the local system']),
         OptInt.new('ReverseListenerBindPort', [ false, 'The port to bind to on the local system if different from LPORT' ]),
-        OptString.new('ReverseListenerComm', [ false, 'The specific communication channel to use for this listener']),
-        OptBool.new('ReverseListenerThreaded', [ true, 'Handle every connection in a new thread (experimental)', false])
+        OptBool.new('ReverseListenerThreaded', [ true, 'Handle every connection in a new thread (experimental)', false]),
+        OptString.new('ReverseListenerComm', [ false, 'The specific communication channel to use for this listener'])
       ] +
       Msf::Opt::stager_retry_options,
       Msf::Handler::ReverseUdp)
@@ -94,17 +104,9 @@ module ReverseUdp
   def setup_handler
     ex = false
 
-    comm = case datastore['ReverseListenerComm'].to_s
-      when "local"; ::Rex::Socket::Comm::Local
-      when /\A[0-9]+\Z/; framework.sessions[datastore['ReverseListenerComm'].to_i]
-      else; nil
-      end
-    unless comm.is_a? ::Rex::Socket::Comm
-      comm = nil
-    end
-
+    comm = select_comm
     local_port = bind_port
-    addrs = bind_address
+    addrs = bind_addresses
 
     addrs.each { |ip|
       begin
@@ -122,15 +124,7 @@ module ReverseUdp
 
         ex = false
 
-        comm_used = comm || Rex::Socket::SwitchBoard.best_comm( ip )
-        comm_used = Rex::Socket::Comm::Local if comm_used == nil
-
-        if( comm_used.respond_to?( :type ) and comm_used.respond_to?( :sid ) )
-          via = "via the #{comm_used.type} on session #{comm_used.sid}"
-        else
-          via = ""
-        end
-
+        via = via_string(self.listener_sock.channel.client) if self.listener_sock.respond_to?(:channel) && self.listener_sock.channel.respond_to?(:client)
         print_status("Started #{human_name} handler on #{ip}:#{local_port} #{via}")
         break
       rescue
@@ -166,13 +160,16 @@ module ReverseUdp
       loop do
         # Accept a client connection
         begin
-          inbound, peerhost, peerport = self.listener_sock.recvfrom
+          inbound, addr = self.listener_sock.recvfrom(65535)
+          peerhost, peerport = addr[3], addr[1]
           next if peerhost.nil?
+          comm = self.listener_sock.channel.client if self.listener_sock.respond_to?(:channel) && self.listener_sock.channel.respond_to?(:client)
+
           cli_opts = {
             'PeerPort' => peerport,
             'PeerHost' => peerhost,
             'LocalPort' => self.listener_sock.localport,
-            'Comm' => self.listener_sock.respond_to?(:comm) ? self.listener_sock.comm : nil
+            'Comm' => comm
           }
 
           # unless ['::', '0.0.0.0'].any? {|alladdr| self.listener_sock.localhost == alladdr }
@@ -257,26 +254,6 @@ protected
   def bind_port
     port = datastore['ReverseListenerBindPort'].to_i
     port > 0 ? port : datastore['LPORT'].to_i
-  end
-
-  def bind_address
-    # Switch to IPv6 ANY address if the LHOST is also IPv6
-    addr = Rex::Socket.resolv_nbo(datastore['LHOST'])
-    # First attempt to bind LHOST. If that fails, the user probably has
-    # something else listening on that interface. Try again with ANY_ADDR.
-    any = (addr.length == 4) ? "0.0.0.0" : "::0"
-
-    addrs = [ Rex::Socket.addr_ntoa(addr), any  ]
-
-    if not datastore['ReverseListenerBindAddress'].to_s.empty?
-      # Only try to bind to this specific interface
-      addrs = [ datastore['ReverseListenerBindAddress'] ]
-
-      # Pick the right "any" address if either wildcard is used
-      addrs[0] = any if (addrs[0] == "0.0.0.0" or addrs == "::0")
-    end
-
-    addrs
   end
 
   attr_accessor :listener_sock # :nodoc:

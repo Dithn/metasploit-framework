@@ -136,7 +136,7 @@ class MsftidyDoc
         next
       end
 
-      if line =~ /^## Verification Steps$/
+      if line =~ /^## Verification Steps$/ || line =~ /^## Module usage$/
         has_verification_steps = true
         next
       end
@@ -205,8 +205,8 @@ class MsftidyDoc
 
   # This checks that the H2 headings are in the right order. Options are optional.
   def h2_order
-    unless @source =~ /^## Vulnerable Application$.+^## Verification Steps$.+(?:^## Options$.+)?^## Scenarios$/m
-      warn('H2 headings in incorrect order.  Should be: Vulnerable Application, Verification Steps, Options, Scenarios')
+    unless @source =~ /^## Vulnerable Application$.+^## (Verification Steps|Module usage)$.+(?:^## Options$.+)?^## Scenarios$/m
+      warn('H2 headings in incorrect order.  Should be: Vulnerable Application, Verification Steps/Module usage, Options, Scenarios')
     end
   end
 
@@ -218,7 +218,7 @@ class MsftidyDoc
     @lines.each do |ln|
       idx += 1
 
-      tback = ln.scan(/```/)
+      tback = ln.scan('```')
       if tback.length > 0
         if tback.length.even?
           warn("Should use single backquotes (`) for single line literals instead of triple backquotes (```)", idx)
@@ -240,13 +240,13 @@ class MsftidyDoc
         in_options = false
       end
 
-      if in_options && ln =~ /^\s*\*\*[a-z]+\*\*$/i # catch options in old format like **command** instead of ### comand
+      if in_options && ln =~ /^\s*\*\*[a-z]+\*\*$/i # catch options in old format like **command** instead of ### command
         warn("Options should use ### instead of bolds (**)", idx)
       end
 
       # this will catch either bold or h2/3 universal options.  Defaults aren't needed since they're not unique to this exploit
-      if in_options && ln =~ /^\s*[\*#]{2,3}\s*(rhost|rhosts|rport|lport|lhost|srvhost|srvport|ssl|uripath|session|proxies|payload)\*{0,2}$/i
-        warn('Universal options such as rhost(s), rport, lport, lhost, srvhost, srvport, ssl, uripath, session, proxies, payload can be removed.', idx)
+      if in_options && ln =~ /^\s*[\*#]{2,3}\s*(rhost|rhosts|rport|lport|lhost|srvhost|srvport|ssl|uripath|session|proxies|payload|targeturi)\*{0,2}$/i
+        warn('Universal options such as rhost(s), rport, lport, lhost, srvhost, srvport, ssl, uripath, session, proxies, payload, targeturi can be removed.', idx)
       end
       # find spaces at EOL not in a code block which is ``` or starts with four spaces
       if !in_codeblock && ln =~ /[ \t]$/ && !(ln =~ /^    /)
@@ -257,7 +257,7 @@ class MsftidyDoc
         warn("Instructional text not removed", idx)
       end
 
-      if ln =~ /^# /
+      if !in_codeblock && ln =~ /^# /
         warn("No H1 (#) headers.  If this is code, indent.", idx)
       end
 

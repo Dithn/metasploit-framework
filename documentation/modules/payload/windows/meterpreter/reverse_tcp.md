@@ -28,7 +28,7 @@ First, it is typically used as a payload for an exploit. Here's how to do that:
 
 Another way to use windows/meterpreter/reverse_tcp is to generate it as an executable. Normally,
 you would want to do it with msfvenom. If you are old school, you have probably also heard of
-msfpayload and msfencode. msfvenom is a replacement of those.
+msfvenom, which replaced the deprecated msfpayload and msfencode tools.
 
 The following is a basic example of using msfvenom to generate windows/meterpreter/reverse_tcp
 as an executable:
@@ -343,7 +343,7 @@ meterpreter >
 One great feature of the extension is clipboard management. The Windows clipboard is interesting
 because it can store anything that is sensitive, such as files, user names, and passwords, but it is not well protected.
 
-For example, a password manager is a popular tool to store encryped passwords. It allows the user
+For example, a password manager is a popular tool to store encrypted passwords. It allows the user
 to create complex passwords without the need to memorize any of them. All the user needs to do is
 open the password manager, retrieve the password for a particular account by copying it, and then
 paste it on a login page.
@@ -353,7 +353,7 @@ in the operating system's clipboard. As an attacker, you can take advantage of t
 clipboard monitor from Meterpreter/extapi, and then collect whatever the user copies.
 
 To read whatever is currently stored in the target's clipboard, you can use the clipboard_get_data
-commnad:
+command:
 
 ```
 meterpreter > clipboard_get_data
@@ -449,14 +449,14 @@ meterpreter > python_import -f /tmp/test.py
 meterpreter >
 ```
 
-To learn more about the Python extension, please read this [wiki](https://github.com/rapid7/metasploit-framework/wiki/Python-Extension).
+To learn more about the Python extension, please read this [wiki](https://docs.metasploit.com/docs/using-metasploit/advanced/meterpreter/python-extension.html).
 
 **Network Pivoting**
 
 There are three mains ways that you can use for moving around inside a network:
 
  - The route command in the msf prompt
- - The route command in the the Meterpreter prompt
+ - The route command in the Meterpreter prompt
  - The portfwd command
 
 ***Routing through msfconsole***
@@ -543,13 +543,13 @@ rdesktop 127.0.0.1
 
 The paranoid mode forces the handler to be strict about which Meterpreter should be connecting to it, hence the name "paranoid mode".
 
-To learn more about this feature, please [click here](https://github.com/rapid7/metasploit-framework/wiki/Meterpreter-Paranoid-Mode).
+To learn more about this feature, please [click here](https://docs.metasploit.com/docs/using-metasploit/advanced/meterpreter/meterpreter-paranoid-mode.html).
 
 **Meterpreter Reliable Network Communication**
 
 Exiting Metasploit using ```exit -y``` no longer terminates the payload session like it used to. Instead, it will continue to run behind the scenes, attempting to connect back to Metasploit when an appropriate handler is available. If you wish to exit the session, make sure to ```sessions -K``` first.
 
-To learn more about this feature, please [click here](https://github.com/rapid7/metasploit-framework/wiki/Meterpreter-Reliable-Network-Communication).
+To learn more about this feature, please [click here](https://docs.metasploit.com/docs/using-metasploit/advanced/meterpreter/meterpreter-reliable-network-communication.html).
 
 **Meterpreter Sleep Control**
 
@@ -564,11 +564,11 @@ meterpreter > sleep 20
 And that will allow Meterpreter to sleep 20 seconds, and will reconnect as long as the payload
 handler remains active (such as being a background job).
 
-To learn more about this feature, please [click here](https://github.com/rapid7/metasploit-framework/wiki/Meterpreter-Sleep-Control).
+To learn more about this feature, please [click here](https://docs.metasploit.com/docs/using-metasploit/advanced/meterpreter/meterpreter-sleep-control.html).
 
 **Meterpreter Stageless Mode**
 
-A stageless Meterpreter allows a more economical way to deliver the payload, for cases where a normal one would actually cost too much time and bandwidth in a penetration test. To learn more about this, [click on this](https://github.com/rapid7/metasploit-framework/wiki/Meterpreter-Stageless-Mode) to read more.
+A stageless Meterpreter allows a more economical way to deliver the payload, for cases where a normal one would actually cost too much time and bandwidth in a penetration test. To learn more about this, [click on this](https://docs.metasploit.com/docs/using-metasploit/advanced/meterpreter/meterpreter-stageless-mode.html) to read more.
 
 To use the stageless payload, use ```windows/meterpreter_reverse_tcp``` instead.
 
@@ -590,7 +590,7 @@ OPTIONS:
     -h        Help menu
     -t <opt>  Retry total time (seconds)
     -w <opt>  Retry wait time (seconds)
-    -x <opt>  Expiration timout (seconds)
+    -x <opt>  Expiration timeout (seconds)
 ```
 
 To see the current timeout configuration, you can use the ```get_timeouts``` command:
@@ -603,13 +603,13 @@ Retry Total Time: 3600 seconds
 Retry Wait Time : 10 seconds
 ```
 
-To learn more about timeout control, please [go here](https://github.com/rapid7/metasploit-framework/wiki/Meterpreter-Timeout-Control).
+To learn more about timeout control, please [go here](https://docs.metasploit.com/docs/using-metasploit/advanced/meterpreter/meterpreter-timeout-control.html).
 
 **Meterpreter Transport Control**
 
 Transport Control allows you manage transports on the fly while the payload session is still running. Meterpreter can automatically cycle through the transports when communication fails, or you can do it manually.
 
-To learn more about this, please read this [documentation](https://github.com/rapid7/metasploit-framework/wiki/Meterpreter-Transport-Control).
+To learn more about this, please read this [documentation](https://docs.metasploit.com/docs/using-metasploit/advanced/meterpreter/meterpreter-transport-control.html).
 
 
 ## Using the Post Exploitation API in IRB
@@ -662,5 +662,5 @@ Railgun allows you to use the remote machine's Windows API in Ruby. For example,
 => {"GetLastError"=>0, "ErrorMessage"=>"The operation completed successfully.", "return"=>1}
 ```
 
-To learn more about using Railgun, please read this [wiki](https://github.com/rapid7/metasploit-framework/wiki/How-to-use-Railgun-for-Windows-post-exploitation).
+To learn more about using Railgun, please read this [wiki](https://docs.metasploit.com/docs/development/developing-modules/libraries/how-to-use-railgun-for-windows-post-exploitation.html).
 

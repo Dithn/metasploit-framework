@@ -15,9 +15,12 @@ module Msf
               'Compat' => {
                 'Meterpreter' => {
                   'Commands' => %w[
+                    core_native_arch
                     stdapi_fs_delete_dir
-                    stdapi_railgun_api*
-                    stdapi_sys_process_*
+                    stdapi_railgun_api
+                    stdapi_sys_process_attach
+                    stdapi_sys_process_memory_allocate
+                    stdapi_sys_process_memory_write
                   ]
                 }
               }
@@ -25,7 +28,7 @@ module Msf
           )
         end
 
-        class String16 < BinData::String
+        class WindowsFileSystemString16 < BinData::String
           def assign(val)
             super(val.encode('utf-16le'))
           end
@@ -35,7 +38,8 @@ module Msf
           end
         end
 
-        class UnicodeString < BinData::Record
+        class WindowsFileSystemUnicodeString < BinData::Record
+          search_prefix :windows_file_system
           endian :little
 
           uint16 :str_length
@@ -47,7 +51,8 @@ module Msf
           end
         end
 
-        class ObjectAttributes < BinData::Record
+        class WindowsFileSystemObjectAttributes < BinData::Record
+          search_prefix :windows_file_system
           #
           # Valid values for the Attributes field
           OBJ_INHERIT                       = 0x00000002
@@ -86,7 +91,7 @@ module Msf
           end
         end
 
-        class Guid < BinData::Record
+        class WindowsFileSystemGuid < BinData::Record
           endian :little
 
           uint32 :data1, initial_value: 0
@@ -95,7 +100,8 @@ module Msf
           string :data4, length: 8, initial_value: "\x00\x00\x00\x00\x00\x00\x00\x00"
         end
 
-        class ReparseGuidDataBuffer < BinData::Record
+        class WindowsFileSystemReparseGuidDataBuffer < BinData::Record
+          search_prefix :windows_file_system
           endian :little
 
           uint32 :reparse_tag
@@ -105,8 +111,11 @@ module Msf
           string :reparse_data
         end
 
-        class ReparseDataBuffer < BinData::Record
-          class ReparseBuffer < BinData::Record
+        class WindowsFileSystemReparseDataBuffer < BinData::Record
+          search_prefix :windows_file_system
+
+          class WindowsFileSystemReparseBuffer < BinData::Record
+            search_prefix :windows_file_system
             endian :little
 
             uint16 :substitute_name_offset
@@ -115,14 +124,14 @@ module Msf
             uint16 :print_name_length
           end
 
-          class SymbolicLinkReparseBuffer < ReparseBuffer
+          class WindowsFileSystemSymbolicLinkReparseBuffer < WindowsFileSystemReparseBuffer
             endian :little
 
             uint32   :flags
             string16 :path_buffer
           end
 
-          class MountPointReparseBuffer < ReparseBuffer
+          class WindowsFileSystemMountPointReparseBuffer < WindowsFileSystemReparseBuffer
             endian :little
 
             string16 :path_buffer
@@ -137,8 +146,8 @@ module Msf
           uint16 :reparse_data_length
           uint16 :reserved, initial_value: 0
           choice :reparse_data, selection: -> { @obj.parent.get_parameter(:type) || -1 } do
-            symbolic_link_reparse_buffer SYMBOLIC_LINK
-            mount_point_reparse_buffer   MOUNT_POINT
+            windows_file_system_symbolic_link_reparse_buffer SYMBOLIC_LINK
+            windows_file_system_mount_point_reparse_buffer   MOUNT_POINT
             string :default
           end
         end
@@ -353,11 +362,11 @@ module Msf
         end
 
         def build_object_attributes(p_unicode_buf)
-          object_attributes = ObjectAttributes.new(
+          object_attributes = WindowsFileSystemObjectAttributes.new(
             arch: client.native_arch
           )
           object_attributes.p_root_directory = 0 # root argument is nil, otherwise, we need to get a valid handle to root (TODO later)
-          object_attributes.attributes = ObjectAttributes::OBJ_CASE_INSENSITIVE
+          object_attributes.attributes = WindowsFileSystemObjectAttributes::OBJ_CASE_INSENSITIVE
           object_attributes.p_security_descriptor = 0
           object_attributes.p_security_quality_of_service = 0
           object_attributes.p_object_name = p_unicode_buf
@@ -365,7 +374,7 @@ module Msf
         end
 
         def build_reparse_data_buffer(target, print_name)
-          buffer = ReparseDataBuffer.new(type: ReparseDataBuffer::MOUNT_POINT)
+          buffer = WindowsFileSystemReparseDataBuffer.new(type: WindowsFileSystemReparseDataBuffer::MOUNT_POINT)
           target_byte_size = target.size * 2
           print_name_byte_size = print_name.size * 2
           path_buffer_size = target_byte_size + print_name_byte_size + 8 + 4
@@ -381,7 +390,7 @@ module Msf
         end
 
         def build_unicode_string(str_byte_size, p_buffer)
-          unicode_str = UnicodeString.new(
+          unicode_str = WindowsFileSystemUnicodeString.new(
             arch: client.native_arch
           )
           unicode_str.str_length = str_byte_size - 2
@@ -400,6 +409,34 @@ module Msf
           return nil unless p_buffer
 
           build_unicode_string(enc_str.size, p_buffer)
+        end
+
+        #
+        # Return a list of the Windows Drives
+        #
+        def get_drives
+          drives = []
+          if session.type == "meterpreter" && session.railgun
+            bitmask = session.railgun.kernel32.GetLogicalDrives()["return"]
+            letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            (0..25).each do |i|
+              label = letters[i,1]
+              rem = bitmask % (2**(i+1))
+              if rem > 0
+                drives << label
+                bitmask = bitmask - rem
+              end
+            end
+          else
+            disks = cmd_exec("wmic logicaldisk get caption").split("\r\n")
+            for disk in disks
+              if /([A-Z]):/ =~ disk
+                drives << disk[0]
+              end
+            end
+          end
+
+          drives
         end
       end # FileSystem
     end # Windows

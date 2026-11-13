@@ -8,59 +8,6 @@ module Http
 
 ###
 #
-# Runtime extension of the HTTP clients that connect to the server.
-#
-###
-module ServerClient
-
-  #
-  # Initialize a new request instance.
-  #
-  def init_cli(server)
-    self.request   = Request.new
-    self.server    = server
-    self.keepalive = false
-  end
-
-  #
-  # Resets the parsing state.
-  #
-  def reset_cli
-    self.request.reset
-  end
-
-  #
-  # Transmits a response and adds the appropriate headers.
-  #
-  def send_response(response)
-    # Set the connection to close or keep-alive depending on what the client
-    # can support.
-    response['Connection'] = (keepalive) ? 'Keep-Alive' : 'close'
-
-    # Add any other standard response headers.
-    server.add_response_headers(response)
-
-    # Send it off.
-    put(response.to_s)
-  end
-
-  #
-  # The current request context.
-  #
-  attr_accessor :request
-  #
-  # Boolean that indicates whether or not the connection supports keep-alive.
-  #
-  attr_accessor :keepalive
-  #
-  # A reference to the server the client is associated with.
-  #
-  attr_accessor :server
-
-end
-
-###
-#
 # Acts as an HTTP server, processing requests and dispatching them to
 # registered procs.  Some of this server was modeled after webrick.
 #
@@ -100,7 +47,7 @@ class Server
   #
   def initialize(port = 80, listen_host = '0.0.0.0', ssl = false, context = {},
                  comm = nil, ssl_cert = nil, ssl_compression = false,
-                 ssl_cipher = nil)
+                 ssl_cipher = nil, ssl_version = nil)
     self.listen_host     = listen_host
     self.listen_port     = port
     self.ssl             = ssl
@@ -109,6 +56,7 @@ class Server
     self.ssl_cert        = ssl_cert
     self.ssl_compression = ssl_compression
     self.ssl_cipher      = ssl_cipher
+    self.ssl_version     = ssl_version
     self.listener        = nil
     self.resources       = {}
     self.server_name     = DefaultServer
@@ -126,7 +74,7 @@ class Server
   # Returns the hardcore alias for the HTTP service
   #
   def self.hardcore_alias(*args)
-    "#{(args[0] || '')}#{(args[1] || '')}"
+    "#{(args[0] || '')}-#{(args[1] || '')}-#{args[4] || ''}"
   end
 
   #
@@ -142,14 +90,15 @@ class Server
   def start
 
     self.listener = Rex::Socket::TcpServer.create(
-      'LocalHost' => self.listen_host,
-      'LocalPort' => self.listen_port,
-      'Context'   => self.context,
-      'SSL'       => self.ssl,
-      'SSLCert'   => self.ssl_cert,
+      'LocalHost'      => self.listen_host,
+      'LocalPort'      => self.listen_port,
+      'Context'        => self.context,
+      'SSL'            => self.ssl,
+      'SSLCert'        => self.ssl_cert,
       'SSLCompression' => self.ssl_compression,
-      'SSLCipher' => self.ssl_cipher,
-      'Comm'      => self.comm
+      'SSLCipher'      => self.ssl_cipher,
+      'SSLVersion'     => self.ssl_version,
+      'Comm'           => self.comm
     )
 
     # Register callbacks
@@ -216,7 +165,7 @@ class Server
     end
 
     # If a procedure was passed, mount the resource with it.
-    if (opts['Proc'])
+    if opts['Proc']
       mount(name, Handler::Proc, false, opts['Proc'], opts['VirtualDirectory'])
     else
       raise ArgumentError, "You must specify a procedure."
@@ -233,8 +182,10 @@ class Server
   #
   # Adds Server headers and stuff.
   #
-  def add_response_headers(resp)
+  def add_response_headers(req, resp)
     resp['Server'] = self.server_name if not resp['Server']
+    expl = self.context['MsfExploit'] if self.context
+    expl.add_response_headers(req, resp) if expl&.respond_to?(:add_response_headers)
   end
 
   #
@@ -264,7 +215,7 @@ class Server
       "<title>404 Not Found</title>" +
       "</head><body>" +
       "<h1>Not found</h1>" +
-      "The requested URL #{html_escape(request.resource)} was not found on this server.<p><hr>" +
+      "The requested URL #{ERB::Util.html_escape(request.resource)} was not found on this server.<p><hr>" +
       "</body></html>"
 
     # Send the response to the client like what
@@ -272,7 +223,7 @@ class Server
   end
 
   attr_accessor :listen_port, :listen_host, :server_name, :context, :comm
-  attr_accessor :ssl, :ssl_cert, :ssl_compression, :ssl_cipher
+  attr_accessor :ssl, :ssl_cert, :ssl_compression, :ssl_cipher, :ssl_version
   attr_accessor :listener, :resources
 
 protected
@@ -325,24 +276,42 @@ protected
   #
   def dispatch_request(cli, request)
     # Is the client requesting keep-alive?
-    if ((request['Connection']) and
-       (request['Connection'].downcase == 'Keep-Alive'.downcase))
+    if request['Connection'] && request['Connection'].downcase == 'keep-alive'
       cli.keepalive = true
     end
 
-    # Search for the resource handler for the requested URL.  This is pretty
-    # inefficient right now, but we can spruce it up later.
-    p    = nil
-    len  = 0
-    root = nil
+    # first, try to match up the request with a handler based on a matching
+    # function that's present in the context, if specified.
+    expl = self.context['MsfExploit'] if self.context
+    resource_id = expl.find_resource_id(cli, request) if expl && expl.respond_to?(:find_resource_id)
+    request.conn_id = resource_id
 
-    resources.each_pair { |k, val|
-      if (request.resource =~ /^#{k}/ and k.length > len)
-        p    = val
-        len  = k.length
-        root = k
-      end
-    }
+    if resource_id && resources[resource_id]
+      p = resources[resource_id]
+      len = resource_id.length
+      root = request.resource
+    elsif resources[request.resource]
+      p = resources[request.resource]
+      # This branch is reached when resource_id is nil (e.g. fetch-payload
+      # adapters have no find_resource_id), so the matched resource is the
+      # request resource itself -- not resource_id, which would nil-deref.
+      len = request.resource.length
+      root = request.resource
+    else
+      # Search for the resource handler for the requested URL.  This is pretty
+      # inefficient right now, but we can spruce it up later.
+      p    = nil
+      len  = 0
+      root = nil
+
+      resources.each_pair { |k, val|
+        if (request.resource =~ /^#{k}/ and k.length > len)
+          p    = val
+          len  = k.length
+          root = k
+        end
+      }
+    end
 
     if (p)
       # Create an instance of the handler for this resource
@@ -383,4 +352,3 @@ end
 end
 end
 end
-

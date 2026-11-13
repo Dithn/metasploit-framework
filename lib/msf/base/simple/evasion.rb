@@ -8,12 +8,13 @@ module Evasion
   include Module
 
   def self.run_simple(oevasion, opts, &block)
+    job_listener = opts.delete('JobListener') || Msf::Simple::NoopJobListener.instance
     evasion = oevasion.replicant
     # Trap and print errors here (makes them UI-independent)
     begin
       # Clone the module to prevent changes to the original instance
 
-      Msf::Simple::Framework.simplify_module( evasion, false )
+      Msf::Simple::Framework.simplify_module(evasion)
       yield(evasion) if block_given?
 
       # Import options from the OptionStr or Option hash.
@@ -28,7 +29,7 @@ module Evasion
       evasion.options.validate(evasion.datastore)
 
       # Start it up
-      driver = EvasionDriver.new(evasion.framework)
+      driver = EvasionDriver.new(evasion.framework, job_listener: job_listener)
 
       # Initialize the driver instance
       driver.evasion = evasion
@@ -85,12 +86,17 @@ module Evasion
 
       # Save the job identifier this evasion is running as
       evasion.job_id  = driver.job_id
+      evasion.run_uuid = driver.run_uuid
 
       # Propagate this back to the caller for console mgmt
       oevasion.job_id = evasion.job_id
+      oevasion.run_uuid = evasion.run_uuid
     rescue ::Interrupt
       evasion.error = $!
       raise $!
+    rescue ::Msf::OptionValidateError => e
+      evasion.error = e
+      ::Msf::Ui::Formatter::OptionValidateError.print_error(evasion, e)
     rescue ::Exception => e
       evasion.error = e
       evasion.print_error("evasion failed: #{e}")
@@ -100,7 +106,7 @@ module Evasion
     nil
   end
 
-  def run_simple(opts, &block)
+  def run_simple(opts = {}, &block)
     Msf::Simple::Evasion.run_simple(self, opts, &block)
   end
 

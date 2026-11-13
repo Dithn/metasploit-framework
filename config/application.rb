@@ -1,5 +1,28 @@
+require 'fiddle'
+Fiddle.const_set(:VERSION, '0.0.0') unless Fiddle.const_defined?(:VERSION)
+
 require 'rails'
 require File.expand_path('../boot', __FILE__)
+
+require 'action_view'
+# Monkey patch https://github.com/rails/rails/blob/v8.1.4.1/actionview/lib/action_view/helpers/tag_helper.rb#L43
+# Re-check the inherited-method guard before upgrading to another ActionView minor version.
+raise "ActionView version mismatch: expected 8.1.x, got #{ActionView::VERSION::STRING}" unless ActionView::VERSION::STRING.start_with?('8.1.')
+
+module ActionView::Helpers::TagHelper
+  class TagBuilder
+    def self.define_element(name, code_generator:, method_name: name)
+      # Removed 'return if method_defined?(name)' guard that conflicts with
+      # Metasploit's Kernel select patch (rex.rb adds select to Kernel)
+      code_generator.class_eval do |batch|
+        batch << "\n" <<
+          "def #{method_name}(content = nil, escape: true, **options, &block)" <<
+          "  tag_string(#{name.inspect}, content, options, escape: escape, &block)" <<
+          "end"
+      end
+    end
+  end
+end
 
 all_environments = [
     :development,
@@ -38,14 +61,9 @@ module Metasploit
       config.paths['config/database'] = [Metasploit::Framework::Database.configurations_pathname.try(:to_path)]
       config.autoloader = :zeitwerk
 
-      case Rails.env
-      when "development"
-        config.eager_load = false
-      when "test"
-        config.eager_load = false
-      when "production"
-        config.eager_load = true
-      end
+      config.load_defaults 8.1
+
+      config.eager_load = false
     end
   end
 end

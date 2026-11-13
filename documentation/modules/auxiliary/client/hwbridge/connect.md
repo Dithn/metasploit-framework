@@ -47,17 +47,17 @@ on setting up the [BAFX 34t5](https://bafxpro.com/products/obdreader) with Kali 
 
 ## Options
 
- **TARGETURI**
+### TARGETURI
 
  Specifies the base target URI to communicate to the HWBridge API.  By default this is '/' but it
  could be things such as '/api' or the randomly generated URI from the local_hwbridge module
 
- **DEBUGJSON**
+### DEBUGJSON
 
  Prints out all the JSON packets that come from the HWBridge API.  Useful for troubleshooting
  a device.
 
- This module also supports all the other HTTP Client options typical to Metaplsoit.
+ This module also supports all the other HTTP Client options typical to Metasploit.
 
 ## Sample Connection
 
@@ -127,6 +127,11 @@ of.  For instance, perhaps the device has a unique capability that isn't standar
 custom_methods as a capability.  At which point Metasploit will then query the custom methods
 and their argument syntax.  These methods will become available as command line options
 within the hardware bridge.
+
+Method path segments may contain ASCII letters, digits, underscores, hyphens, periods,
+or tildes; `.` and `..` are not allowed as complete segments. The final segment becomes
+the command; it must start with a letter or underscore and contain only letters, digits,
+and underscores.
 
 For a simple example of a custom method see auxiliary/server/local_hwbridge for a more complete
 list on how to define custom methods see the [API Reference](http://opengarages.org/hwbridge).

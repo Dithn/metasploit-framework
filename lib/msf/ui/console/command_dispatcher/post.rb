@@ -14,14 +14,7 @@ class Post
   include Msf::Ui::Console::ModuleCommandDispatcher
   include Msf::Ui::Console::ModuleActionCommands
   include Msf::Ui::Console::ModuleOptionTabCompletion
-
-
-  @@post_opts = Rex::Parser::Arguments.new(
-    "-h" => [ false, "Help banner."                                          ],
-    "-j" => [ false, "Run in the context of a job."                          ],
-    "-o" => [ true,  "A comma separated list of options in VAR=VAL format."  ],
-    "-q" => [ false, "Run the module in quiet mode with no output"           ]
-  )
+  include Msf::Ui::Console::ModuleArgumentParsing
 
   #
   # Returns the hash of commands specific to post modules.
@@ -54,25 +47,35 @@ class Post
   # Reloads a post module and executes it
   #
   def cmd_rerun(*args)
+    opts = {}
+    if args.include?('-r') || args.include?('--reload-libs')
+      driver.run_single('reload_lib -a')
+      opts[:previously_reloaded] = true
+    end
+
     # Stop existing job and reload the module
     if reload(true)
-      cmd_run(*args)
+      cmd_run(*args, opts: opts)
     end
   end
 
   alias cmd_rexploit cmd_rerun
 
   def cmd_run_help
-    print_line "Usage: run [options]"
-    print_line
-    print_line "Launches a post exploitation module."
-    print @@auxiliary_opts.usage
+    print_module_run_or_check_usage(
+      command: :run,
+      description: 'Launches a post exploitation module.'
+    )
   end
 
   #
   # Executes a post module
   #
-  def cmd_run(*args, action: nil)
+  def cmd_run(*args, action: nil, opts: {})
+    if (args.include?('-r') || args.include?('--reload-libs')) && !opts[:previously_reloaded]
+      driver.run_single('reload_lib -a')
+    end
+
     return false unless (args = parse_run_opts(args, action: action))
     jobify = args[:jobify]
 
@@ -82,14 +85,14 @@ class Post
     end
 
     begin
-      mod.run_simple(
+      mod.run_simple({
         'Action'         => args[:action],
-        'OptionStr'      => args[:datastore_options].map { |k,v| "#{k}=#{v}" }.join(','),
+        'Options'      => args[:datastore_options],
         'LocalInput'     => driver.input,
         'LocalOutput'    => driver.output,
         'RunAsJob'       => jobify,
         'Quiet'          => args[:quiet]
-      )
+      })
     rescue ::Timeout::Error
       print_error("Post triggered a timeout exception")
     rescue ::Interrupt
@@ -122,7 +125,7 @@ class Post
     print_line "Usage: run [options]"
     print_line
     print_line "Launches a post module."
-    print @@module_opts.usage
+    print @@module_opts_with_action_support.usage
   end
 
   alias cmd_exploit_help cmd_run_help

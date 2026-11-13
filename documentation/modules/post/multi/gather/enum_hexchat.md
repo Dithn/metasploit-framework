@@ -43,7 +43,7 @@ Only download the chat logs.
 
 ### CONFIGS
 
-Only download teh config files.
+Only download the config files.
 
 ## Options
 
@@ -128,7 +128,7 @@ Gather the files from XCHat. Default `false`.
     xchat => true
     resource (xchat_win.rb)> set verbose true
     verbose => true
-    msf5 post(multi/gather/enum_hexchat) > rexploit
+    msf post(multi/gather/enum_hexchat) > rexploit
     [*] Reloading module...
     
     [!] SESSION may not be compatible with this module.

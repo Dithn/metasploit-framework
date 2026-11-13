@@ -3,7 +3,6 @@
 # Current source: https://github.com/rapid7/metasploit-framework
 ##
 
-
 class MetasploitModule < Msf::Post
   include Msf::Auxiliary::Brocade
   include Msf::Exploit::Deprecated
@@ -21,7 +20,12 @@ class MetasploitModule < Msf::Post
         'License' => MSF_LICENSE,
         'Author' => [ 'h00die'],
         'Platform' => [ 'brocade'],
-        'SessionTypes' => [ 'shell' ]
+        'SessionTypes' => [ 'shell' ],
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [IOC_IN_LOGS],
+          'Reliability' => []
+        }
       )
     )
   end

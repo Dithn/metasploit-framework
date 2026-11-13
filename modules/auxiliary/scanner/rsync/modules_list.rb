@@ -16,23 +16,22 @@ class MetasploitModule < Msf::Auxiliary
 
   def initialize
     super(
-      'Name'        => 'List Rsync Modules',
-      'Description' => %q(
+      'Name' => 'List Rsync Modules',
+      'Description' => %q{
         An rsync module is essentially a directory share.  These modules can
         optionally be protected by a password.  This module connects to and
         negotiates with an rsync server, lists the available modules and,
         optionally, determines if the module requires a password to access.
-      ),
-      'Author'      => [
+      },
+      'Author' => [
         'ikkini', # original metasploit module
         'Jon Hart <jon_hart[at]rapid7.com>', # improved metasploit module
         'Nixawk' # improved metasploit module
       ],
-      'References'  =>
-        [
-          ['URL', 'http://rsync.samba.org/ftp/rsync/rsync.html']
-        ],
-      'License'     => MSF_LICENSE
+      'References' => [
+        ['URL', 'http://rsync.samba.org/ftp/rsync/rsync.html']
+      ],
+      'License' => MSF_LICENSE
     )
 
     register_options(
@@ -85,8 +84,10 @@ class MetasploitModule < Msf::Auxiliary
     # on its own line, lines separated with a newline
     sock.get(read_timeout).split(/\n/).map(&:strip).map do |module_line|
       break if module_line =~ /^#{RSYNC_HEADER} EXIT$/
+
       name, comment = module_line.split(/\t/).map(&:strip)
       next unless name
+
       modules_metadata << { name: name, comment: comment }
     end
 
@@ -95,7 +96,7 @@ class MetasploitModule < Msf::Auxiliary
 
   # Attempts to negotiate the rsync protocol with the endpoint.
   def rsync_negotiate
-    # rsync is promiscuous and will send the negotitation and motd
+    # rsync is promiscuous and will send the negotiation and motd
     # upon connecting.  abort if we get nothing
     return unless (greeting = sock.get_once(-1, read_timeout))
 
@@ -104,17 +105,21 @@ class MetasploitModule < Msf::Auxiliary
     greeting_control_lines, greeting_data_lines = rsync_parse_lines(greeting)
 
     # locate the rsync negotiation and complete it by just echo'ing
-    # back the same rsync version that it sent us
+    # back the same greeting line that it sent us.  Older daemons greet
+    # with a bare protocol version (e.g. "@RSYNCD: 29"), while protocol
+    # 32 daemons (rsync 3.2.7+) greet with "@RSYNCD: 32.0 sha512 ..."
+    # and reject a reply that omits the subprotocol and digest list, so
+    # the entire greeting line must be echoed back verbatim.
     version = nil
     greeting_control_lines.map do |greeting_control_line|
-      if /^#{RSYNC_HEADER} (?<version>\d+(\.\d+)?)$/ =~ greeting_control_line
+      if /^#{RSYNC_HEADER} (?<version>\d+(\.\d+)?)/ =~ greeting_control_line
         version = Regexp.last_match('version')
-        sock.puts("#{RSYNC_HEADER} #{version}\n")
+        sock.puts("#{greeting_control_line}\n")
       end
     end
 
     unless version
-      vprint_error("no rsync negotiation found")
+      vprint_error('no rsync negotiation found')
       return
     end
 
@@ -147,7 +152,7 @@ class MetasploitModule < Msf::Auxiliary
       connect
       version, motd = rsync_negotiate
       unless version
-        vprint_error("does not appear to be rsync")
+        vprint_error('does not appear to be rsync')
         disconnect
         return
       end
@@ -166,7 +171,7 @@ class MetasploitModule < Msf::Auxiliary
       name: 'rsync',
       info: info
     )
-    print_status("rsync version: #{version}") if datastore['SHOW_VERSION']
+    print_status("rsync protocol version: #{version}") if datastore['SHOW_VERSION']
     print_status("rsync MOTD: #{motd}") if motd && datastore['SHOW_MOTD']
 
     modules_metadata = {}
@@ -180,25 +185,23 @@ class MetasploitModule < Msf::Auxiliary
     end
 
     if modules_metadata.empty?
-      print_status("no rsync modules found")
+      print_status('no rsync modules found')
     else
       modules = modules_metadata.map { |m| m[:name] }
       print_good("#{modules.size} rsync modules found: #{modules.join(', ')}")
 
-      table_columns = %w(Name Comment)
+      table_columns = %w[Name Comment]
       if datastore['TEST_AUTHENTICATION']
         table_columns << 'Authentication'
         modules_metadata.each do |module_metadata|
-          begin
-            connect
-            rsync_negotiate
-            module_metadata[:authentication] = get_rsync_auth_status(module_metadata[:name])
-          rescue *HANDLED_EXCEPTIONS => e
-            vprint_error("error while testing authentication on #{module_metadata[:name]}: #{e}")
-            break
-          ensure
-            disconnect
-          end
+          connect
+          rsync_negotiate
+          module_metadata[:authentication] = get_rsync_auth_status(module_metadata[:name])
+        rescue *HANDLED_EXCEPTIONS => e
+          vprint_error("error while testing authentication on #{module_metadata[:name]}: #{e}")
+          break
+        ensure
+          disconnect
         end
       end
 

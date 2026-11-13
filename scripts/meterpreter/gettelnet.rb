@@ -19,7 +19,7 @@ logs = ::File.join(Msf::Config.log_directory,'scripts', 'gettelnet')
 # Create the log directory
 ::FileUtils.mkdir_p(logs)
 
-# Cleaup script file name
+# Cleanup script file name
 @dest = logs + "/clean_up_" + filenameinfo + ".rc"
 
 @@exec_opts = Rex::Parser::Arguments.new(
@@ -33,7 +33,7 @@ def checkifinst()
   # This won't work on windows 2000 since there is no sc.exe
   print_status("Checking if Telnet is installed...")
   begin
-    registry_getvaldata("HKLM\\SYSTEM\\CurrentControlSet\\services\\TlntSvr\\","Start")
+    registry_getvaldata("HKLM\\SYSTEM\\CurrentControlSet\\services\\TlntSvr","Start")
     return true
   rescue
     return false

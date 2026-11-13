@@ -18,19 +18,19 @@ class MetasploitModule < Msf::Auxiliary
 
   def initialize
     super(
-      'Name'        => 'Apache Karaf Login Utility',
+      'Name' => 'Apache Karaf Login Utility',
       'Description' => %q{
         This module attempts to log into Apache Karaf's SSH. If the TRYDEFAULTCRED option is
         set, then it will also try the default 'karaf' credential.
       },
-      'Author'      => [
-          'Samuel Huckins',
-          'Brent Cook',
-          'Peer Aagaard',
-          'Greg Mikeska',
-          'Dev Mohanty'
+      'Author' => [
+        'Samuel Huckins',
+        'Brent Cook',
+        'Peer Aagaard',
+        'Greg Mikeska',
+        'Dev Mohanty'
       ],
-      'License'     => MSF_LICENSE
+      'License' => MSF_LICENSE
     )
 
     register_options(
@@ -49,8 +49,6 @@ class MetasploitModule < Msf::Auxiliary
         OptInt.new('SSH_TIMEOUT', [ false, 'Specify the maximum time to negotiate a SSH session', 30])
       ]
     )
-
-    deregister_options('PASSWORD_SPRAY')
   end
 
   def rport
@@ -72,14 +70,9 @@ class MetasploitModule < Msf::Auxiliary
     @ip = ip
     print_status("Attempting login to #{ip}:#{rport}...")
 
-    cred_collection = Metasploit::Framework::CredentialCollection.new(
-      blank_passwords: datastore['BLANK_PASSWORDS'],
-      pass_file: datastore['PASS_FILE'],
+    cred_collection = build_credential_collection(
       password: datastore['PASSWORD'],
-      user_file: datastore['USER_FILE'],
-      userpass_file: datastore['USERPASS_FILE'],
-      username: datastore['USERNAME'],
-      user_as_pass: datastore['USER_AS_PASS']
+      username: datastore['USERNAME']
     )
 
     if datastore['TRYDEFAULTCRED']
@@ -93,14 +86,16 @@ class MetasploitModule < Msf::Auxiliary
     end
 
     scanner = Metasploit::Framework::LoginScanner::SSH.new(
-      host: ip,
-      port: rport,
-      cred_details: cred_collection,
-      proxies: datastore['Proxies'],
-      stop_on_success: datastore['STOP_ON_SUCCESS'],
-      connection_timeout: datastore['SSH_TIMEOUT'],
-      framework: framework,
-      framework_module: self,
+      configure_login_scanner(
+        host: ip,
+        port: rport,
+        cred_details: cred_collection,
+        proxies: datastore['Proxies'],
+        stop_on_success: datastore['STOP_ON_SUCCESS'],
+        connection_timeout: datastore['SSH_TIMEOUT'],
+        framework: framework,
+        framework_module: self
+      )
     )
 
     scanner.scan! do |result|
@@ -110,27 +105,27 @@ class MetasploitModule < Msf::Auxiliary
         workspace_id: myworkspace_id
       )
       case result.status
-        when Metasploit::Model::Login::Status::SUCCESSFUL
-          print_brute :level => :good, :ip => ip, :msg => "Success: '#{result.credential}'"
-          credential_core = create_credential(credential_data)
-          credential_data[:core] = credential_core
-          create_credential_login(credential_data)
-        when Metasploit::Model::Login::Status::UNABLE_TO_CONNECT
-          if /key length too short/i === result.proof.message
-            vprint_brute :level => :verror, :ip => ip, :msg => "Could not connect to Apache Karaf: #{result.proof} (net/ssh out of date)"
-          else
-            vprint_brute :level => :verror, :ip => ip, :msg => "Could not connect to Apache Karaf: #{result.proof}"
-          end
-
-          scanner.ssh_socket.close if scanner.ssh_socket && !scanner.ssh_socket.closed?
-          invalidate_login(credential_data)
-        when Metasploit::Model::Login::Status::INCORRECT
-          vprint_brute :level => :verror, :ip => ip, :msg => "Failed: '#{result.credential}'"
-          invalidate_login(credential_data)
-          scanner.ssh_socket.close if scanner.ssh_socket && !scanner.ssh_socket.closed?
+      when Metasploit::Model::Login::Status::SUCCESSFUL
+        print_brute :level => :good, :ip => ip, :msg => "Success: '#{result.credential}'"
+        credential_core = create_credential(credential_data)
+        credential_data[:core] = credential_core
+        create_credential_login(credential_data)
+      when Metasploit::Model::Login::Status::UNABLE_TO_CONNECT
+        if /key length too short/i === result.proof.message
+          vprint_brute :level => :verror, :ip => ip, :msg => "Could not connect to Apache Karaf: #{result.proof} (net/ssh out of date)"
         else
-          invalidate_login(credential_data)
-          scanner.ssh_socket.close if scanner.ssh_socket && !scanner.ssh_socket.closed?
+          vprint_brute :level => :verror, :ip => ip, :msg => "Could not connect to Apache Karaf: #{result.proof}"
+        end
+
+        scanner.ssh_socket.close if scanner.ssh_socket && !scanner.ssh_socket.closed?
+        invalidate_login(credential_data)
+      when Metasploit::Model::Login::Status::INCORRECT
+        vprint_brute :level => :verror, :ip => ip, :msg => "Failed: '#{result.credential}'"
+        invalidate_login(credential_data)
+        scanner.ssh_socket.close if scanner.ssh_socket && !scanner.ssh_socket.closed?
+      else
+        invalidate_login(credential_data)
+        scanner.ssh_socket.close if scanner.ssh_socket && !scanner.ssh_socket.closed?
       end
     end
   end

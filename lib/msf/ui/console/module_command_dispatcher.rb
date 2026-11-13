@@ -12,6 +12,7 @@ module Console
 module ModuleCommandDispatcher
 
   include Msf::Ui::Console::CommandDispatcher
+  include Msf::Ui::Console::ModuleArgumentParsing
 
   def commands
     {
@@ -48,19 +49,29 @@ module ModuleCommandDispatcher
     end
   end
 
-  def check_multiple(hosts)
+  def check_multiple(mod)
+    rhosts_walker = Msf::RhostsWalker.new(mod.datastore['RHOSTS'], mod.datastore).to_enum
+    rhosts_walker_count = rhosts_walker.count
+
+    # Short-circuit check_multiple if it's a single host, or doesn't have any hosts set
+    if rhosts_walker_count <= 1
+      nmod = mod.replicant
+      nmod.datastore.merge!(rhosts_walker.next) if rhosts_walker_count == 1
+      check_simple(nmod)
+      return
+    end
+
     # This part of the code is mostly from scanner.rb
     @show_progress = framework.datastore['ShowProgress'] || mod.datastore['ShowProgress'] || false
     @show_percent  = ( framework.datastore['ShowProgressPercent'] || mod.datastore['ShowProgressPercent'] ).to_i
 
-    @range_count   = hosts.length || 0
+    @range_count   = rhosts_walker_count || 0
     @range_done    = 0
     @range_percent = 0
 
     # Set the default thread to 1. The same behavior as before.
     threads_max = (framework.datastore['THREADS'] || mod.datastore['THREADS'] || 1).to_i
     @tl = []
-
 
     if Rex::Compat.is_windows
       if threads_max > 16
@@ -77,17 +88,20 @@ module ModuleCommandDispatcher
     end
 
     loop do
-      while (@tl.length < threads_max)
-        host = hosts.next_host
-        break unless host
+      while @tl.length < threads_max
+        begin
+          datastore = rhosts_walker.next
+        rescue StopIteration
+          datastore = nil
+        end
+        break unless datastore
 
-        @tl << framework.threads.spawn("CheckHost-#{host[:address]}", false, host.dup) { |thr_host|
+        @tl << framework.threads.spawn("CheckHost-#{datastore['RHOSTS']}", false, datastore.dup) { |thr_datastore|
           # Make sure this is thread-safe when assigning an IP to the RHOST
           # datastore option
           nmod = mod.replicant
-          nmod.datastore['RHOST'] = thr_host[:address].dup
-          nmod.datastore['VHOST'] = thr_host[:hostname].dup if nmod.options.include?('VHOST') && nmod.datastore['VHOST'].blank?
-          Msf::Simple::Framework.simplify_module(nmod, false)
+          nmod.datastore.merge!(thr_datastore)
+          Msf::Simple::Framework.simplify_module(nmod)
           check_simple(nmod)
         }
       end
@@ -120,47 +134,25 @@ module ModuleCommandDispatcher
   #
   # Checks to see if a target is vulnerable.
   #
-  def cmd_check(*args)
-    if args.first =~ /^\-h$/i
-      cmd_check_help
-      return
+  def cmd_check(*args, opts: {})
+    if (args.include?('-r') || args.include?('--reload-libs')) && !opts[:previously_reloaded]
+      driver.run_single('reload_lib -a')
     end
 
-    ip_range_arg = args.join(' ') unless args.empty?
-    ip_range_arg ||= mod.datastore['RHOSTS'] || framework.datastore['RHOSTS'] || ''
-    opt = Msf::OptAddressRange.new('RHOSTS')
+    return false unless (args = parse_check_opts(args))
+
+    mod_with_opts = mod.replicant
+    mod_with_opts.datastore.import_options_from_hash(args[:datastore_options])
 
     begin
-      if !ip_range_arg.blank? && opt.valid?(ip_range_arg)
-        hosts = Rex::Socket::RangeWalker.new(opt.normalize(ip_range_arg))
+      mod_with_opts.validate
+    rescue ::Msf::OptionValidateError => e
+      ::Msf::Ui::Formatter::OptionValidateError.print_error(mod_with_opts, e)
+      return false
+    end
 
-        # Check multiple hosts
-        last_rhost_opt = mod.datastore['RHOST']
-        last_rhosts_opt = mod.datastore['RHOSTS']
-        mod.datastore['RHOSTS'] = ip_range_arg
-        begin
-          if hosts.length > 1
-            check_multiple(hosts)
-          # Short-circuit check_multiple if it's a single host
-          else
-            mod.datastore['RHOST'] = hosts.next_ip
-            check_simple
-          end
-        ensure
-          # Restore the original rhost if set
-          mod.datastore['RHOST'] = last_rhost_opt
-          mod.datastore['RHOSTS'] = last_rhosts_opt
-          mod.cleanup
-        end
-      # XXX: This is basically dead code now that exploits use RHOSTS
-      else
-        # Check a single rhost
-        unless Msf::OptAddress.new('RHOST').valid?(mod.datastore['RHOST'])
-          raise Msf::OptionValidateError.new(['RHOST'])
-        end
-        check_simple
-      end
-
+    begin
+      check_multiple(mod_with_opts)
     rescue ::Interrupt
       # When the user sends interrupt trying to quit the task, some threads will still be active.
       # This means even though the console tells the user the task has aborted (or at least they
@@ -175,39 +167,47 @@ module ModuleCommandDispatcher
   end
 
   def cmd_check_help
-    print_line('Usage: check [option] [IP Range]')
-    print_line
-    print_line('Options:')
-    print_line('-h  You are looking at it.')
-    print_line
-    print_line('Examples:')
-    print_line('')
-    print_line('Normally, if a RHOST is already specified, you can just run check.')
-    print_line('But here are different ways to use the command:')
-    print_line
-    print_line('Against a single host:')
-    print_line('check 192.168.1.123')
-    print_line
-    print_line('Against a range of IPs:')
-    print_line('check 192.168.1.1-192.168.1.254')
-    print_line
-    print_line('Against a range of IPs loaded from a file:')
-    print_line('check file:///tmp/ip_list.txt')
-    print_line
+    print_module_run_or_check_usage(command: :check)
     print_line('Multi-threaded checks:')
     print_line('1. set THREADS 10')
     print_line('2. check')
     print_line
   end
 
-  def report_vuln(instance)
-    framework.db.report_vuln(
+  def report_vuln(instance, checkcode = nil)
+    opts = {
       workspace: instance.workspace,
-      host: instance.rhost,
+      host: instance.respond_to?(:target_host) && instance.target_host ? instance.target_host : instance.datastore['RHOST'],
+      proto: if instance.class.ancestors.include?(Msf::Exploit::Remote::Udp)
+               'udp'
+             else
+               'tcp'
+             end,
       name: instance.name,
-      info: "This was flagged as vulnerable by the explicit check of #{instance.fullname}.",
+      info: if checkcode == Msf::Exploit::CheckCode::Appears
+              "Target appears vulnerable based on the explicit check of #{instance.fullname}."
+            else
+              "Vulnerability confirmed by the explicit check of #{instance.fullname}."
+            end,
       refs: instance.references
-    )
+    }
+
+    # Include port so that checks against different ports on the same host
+    # create distinct vuln records instead of collapsing into one.
+    if instance.datastore['RPORT']
+      rport = instance.respond_to?(:rport) ? instance.rport : instance.datastore['RPORT']
+      opts[:port] = rport.to_i if rport.to_i > 0
+    end
+
+    if checkcode&.kind_of?(Msf::Exploit::CheckCode) && checkcode.vuln.present?
+      if checkcode.vuln.kind_of?(Array)
+        checkcode.vuln.each { |vuln| framework.db.report_vuln(opts.merge(vuln)) }
+      else
+        framework.db.report_vuln(opts.merge(checkcode.vuln))
+      end
+    else
+      framework.db.report_vuln(opts)
+    end
   end
 
   def check_simple(instance=nil)
@@ -226,21 +226,21 @@ module ModuleCommandDispatcher
 
     begin
       if instance.respond_to?(:check_simple)
-        code = instance.check_simple(
+        code = instance.check_simple({
           'LocalInput'  => driver.input,
           'LocalOutput' => driver.output
-        )
+        })
       else
         msg = "Check failed: #{instance.type.capitalize} modules do not support check."
         raise NotImplementedError, msg
       end
 
       if (code && code.kind_of?(Msf::Exploit::CheckCode))
-        if (code == Msf::Exploit::CheckCode::Vulnerable)
+        if code == Msf::Exploit::CheckCode::Vulnerable || code == Msf::Exploit::CheckCode::Appears
           print_good("#{peer_msg}#{code[1]}")
           # Restore RHOST for report_vuln
           instance.datastore['RHOST'] ||= rhost
-          report_vuln(instance)
+          report_vuln(instance, code)
         else
           print_status("#{peer_msg}#{code[1]}")
         end
@@ -273,6 +273,12 @@ module ModuleCommandDispatcher
   # Reloads the active module
   #
   def cmd_reload(*args)
+    if args.include?('-r') || args.include?('--reload-libs')
+      driver.run_single('reload_lib -a')
+    end
+
+    return cmd_reload_help if args.include?('-h') || args.include?('--help')
+
     begin
       reload
     rescue

@@ -12,11 +12,15 @@ class MetasploitModule < Msf::Auxiliary
       'Description' => 'Tautulli versions 2.1.9 and prior are vulnerable to denial of service via the /shutdown URL.',
       'Author' => 'Ismail Tasdelen',
       'License' => MSF_LICENSE,
-      'References' =>
-      [
+      'References' => [
         ['CVE', '2019-19833'],
         ['EDB', '47785']
-      ]
+      ],
+      'Notes' => {
+        'Stability' => [CRASH_SERVICE_DOWN],
+        'SideEffects' => [],
+        'Reliability' => []
+      }
     )
     register_options([ Opt::RPORT(8181) ])
   end

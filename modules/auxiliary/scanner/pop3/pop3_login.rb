@@ -13,38 +13,35 @@ class MetasploitModule < Msf::Auxiliary
   include Msf::Auxiliary::AuthBrute
 
   def initialize
-  super(
-    'Name'        => 'POP3 Login Utility',
-    'Description' => 'This module attempts to authenticate to an POP3 service.',
-    'Author'      =>
-    [
-      'Heyder Andrade <heyder[at]alligatorteam.org>'
-    ],
-      'References'     =>
-    [
-      ['URL', 'http://www.ietf.org/rfc/rfc1734.txt'],
-      ['URL', 'http://www.ietf.org/rfc/rfc1939.txt'],
-    ],
-      'License'     => MSF_LICENSE
-  )
-  register_options(
-    [
-      Opt::RPORT(110),
-      OptPath.new('USER_FILE',
-        [
-          false,
-          'The file that contains a list of probable users accounts.',
-          File.join(Msf::Config.install_root, 'data', 'wordlists', 'unix_users.txt')
-        ]),
-      OptPath.new('PASS_FILE',
-        [
-          false,
-          'The file that contains a list of probable passwords.',
-          File.join(Msf::Config.install_root, 'data', 'wordlists', 'unix_passwords.txt')
-        ])
-    ])
-
-  deregister_options('PASSWORD_SPRAY')
+    super(
+      'Name' => 'POP3 Login Utility',
+      'Description' => 'This module attempts to authenticate to an POP3 service.',
+      'Author' => [
+        'Heyder Andrade <heyder[at]alligatorteam.org>'
+      ],
+      'References' => [
+        ['URL', 'https://www.ietf.org/rfc/rfc1734.txt'],
+        ['URL', 'https://www.ietf.org/rfc/rfc1939.txt'],
+      ],
+      'License' => MSF_LICENSE
+    )
+    register_options(
+      [
+        Opt::RPORT(110),
+        OptPath.new('USER_FILE',
+                    [
+                      false,
+                      'The file that contains a list of probable users accounts.',
+                      File.join(Msf::Config.install_root, 'data', 'wordlists', 'unix_users.txt')
+                    ]),
+        OptPath.new('PASS_FILE',
+                    [
+                      false,
+                      'The file that contains a list of probable passwords.',
+                      File.join(Msf::Config.install_root, 'data', 'wordlists', 'unix_passwords.txt')
+                    ])
+      ]
+    )
   end
 
   def target
@@ -52,42 +49,37 @@ class MetasploitModule < Msf::Auxiliary
   end
 
   def run_host(ip)
-    cred_collection = Metasploit::Framework::CredentialCollection.new(
-      blank_passwords: datastore['BLANK_PASSWORDS'],
-      pass_file: datastore['PASS_FILE'],
-      password: datastore['PASSWORD'],
-      user_file: datastore['USER_FILE'],
-      userpass_file: datastore['USERPASS_FILE'],
+    cred_collection = build_credential_collection(
       username: datastore['USERNAME'],
-      user_as_pass: datastore['USER_AS_PASS'],
+      password: datastore['PASSWORD']
     )
 
-    cred_collection = prepend_db_passwords(cred_collection)
-
     scanner = Metasploit::Framework::LoginScanner::POP3.new(
-      host: ip,
-      port: rport,
-      proxies: datastore['PROXIES'],
-      ssl: datastore['SSL'],
-      cred_details: cred_collection,
-      stop_on_success: datastore['STOP_ON_SUCCESS'],
-      bruteforce_speed: datastore['BRUTEFORCE_SPEED'],
-      max_send_size: datastore['TCP::max_send_size'],
-      send_delay: datastore['TCP::send_delay'],
-      framework: framework,
-      framework_module: self,
-      ssl_version: datastore['SSLVersion'],
-      ssl_verify_mode: datastore['SSLVerifyMode'],
-      ssl_cipher: datastore['SSLCipher'],
-      local_port: datastore['CPORT'],
-      local_host: datastore['CHOST']
+      configure_login_scanner(
+        host: ip,
+        port: rport,
+        proxies: datastore['PROXIES'],
+        ssl: datastore['SSL'],
+        cred_details: cred_collection,
+        stop_on_success: datastore['STOP_ON_SUCCESS'],
+        bruteforce_speed: datastore['BRUTEFORCE_SPEED'],
+        max_send_size: datastore['TCP::max_send_size'],
+        send_delay: datastore['TCP::send_delay'],
+        framework: framework,
+        framework_module: self,
+        ssl_version: datastore['SSLVersion'],
+        ssl_verify_mode: datastore['SSLVerifyMode'],
+        ssl_cipher: datastore['SSLCipher'],
+        local_port: datastore['CPORT'],
+        local_host: datastore['CHOST']
+      )
     )
 
     scanner.scan! do |result|
       credential_data = result.to_h
       credential_data.merge!(
-          module_fullname: self.fullname,
-          workspace_id: myworkspace_id
+        module_fullname: self.fullname,
+        workspace_id: myworkspace_id
       )
       case result.status
       when Metasploit::Model::Login::Status::SUCCESSFUL
@@ -114,7 +106,5 @@ class MetasploitModule < Msf::Auxiliary
   def service_name
     datastore['SSL'] ? 'pop3s' : 'pop3'
   end
-
-
 
 end

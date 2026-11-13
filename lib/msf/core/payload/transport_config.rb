@@ -32,9 +32,14 @@ module Msf::Payload::TransportConfig
 
   def transport_config_bind_tcp(opts={})
     ds = opts[:datastore] || datastore
+    # For bind TCP, the payload binds on the target machine. LHOST is not meaningful
+    # for bind payloads and is often left blank. If unset, bind to all interfaces:
+    # '::' for IPv6 targets, '0.0.0.0' for IPv4. This avoids the mistake of binding
+    # to the target's public/external IP which may not be assigned to any local interface.
+    lhost = ds['LHOST'].presence || (Rex::Socket.is_ipv6?(ds['RHOST'].to_s) ? '::' : '0.0.0.0')
     {
       scheme: 'tcp',
-      lhost:  ds['LHOST'],
+      lhost:  lhost,
       lport:  ds['LPORT'].to_i
     }.merge(timeout_config(opts))
   end
@@ -75,8 +80,7 @@ module Msf::Payload::TransportConfig
     uri = opts[:uri]
     unless uri
       type = opts[:stageless] == true ? :init_connect : :connect
-      sum = uri_checksum_lookup(type)
-      uri = luri + generate_uri_uuid(sum, opts[:uuid])
+      uri = luri + generate_uri_uuid_mode(type, uuid: opts[:uuid])
     end
 
     ds = opts[:datastore] || datastore
@@ -97,6 +101,7 @@ module Msf::Payload::TransportConfig
       host:            ds['HttpHostHeader'],
       cookie:          ds['HttpCookie'],
       referer:         ds['HttpReferer'],
+      c2_profile:      opts[:c2_profile],
       custom_headers:  get_custom_headers(ds)
     }.merge(timeout_config(opts))
   end

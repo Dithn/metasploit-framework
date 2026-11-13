@@ -1,7 +1,5 @@
 # -*- coding: binary -*-
 
-require 'metasploit/framework/hashes/identify'
-
 module Msf
   ###
   #
@@ -123,13 +121,13 @@ module Msf
             cred[:jtr_format] = ''
           else
             output << " and Hash: #{hash}"
-            cred[:jtr_format] = identify_hash(hash)
+            cred[:jtr_format] = Metasploit::Framework::Hashes.identify_hash(hash)
           end
 
           cred[:username] = name
           cred[:private_data] = hash
 
-          if framework.db.active          
+          if framework.db.active
             create_credential_and_login(cred)
           end
           print_good(output)
@@ -154,7 +152,7 @@ module Msf
             cred[:jtr_format] = ''
           else
             output << " with Hash: #{hash}"
-            cred[:jtr_format] = identify_hash(hash)
+            cred[:jtr_format] = Metasploit::Framework::Hashes.identify_hash(hash)
           end
 
           cred[:private_data] = hash.to_s

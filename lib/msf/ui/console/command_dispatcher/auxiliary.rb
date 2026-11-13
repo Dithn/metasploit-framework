@@ -41,7 +41,11 @@ class Auxiliary
   #
   # Executes an auxiliary module
   #
-  def cmd_run(*args, action: nil)
+  def cmd_run(*args, action: nil, opts: {})
+    if (args.include?('-r') || args.include?('--reload-libs')) && !opts[:previously_reloaded]
+      driver.run_single('reload_lib -a')
+    end
+
     return false unless (args = parse_run_opts(args, action: action))
     jobify = args[:jobify]
 
@@ -51,40 +55,38 @@ class Auxiliary
       jobify = true
     end
 
-    rhosts = mod.datastore['RHOSTS']
+    mod_with_opts = mod.replicant
+    mod_with_opts.datastore.import_options_from_hash(args[:datastore_options])
+    rhosts = mod_with_opts.datastore['RHOSTS']
+    rhosts_walker = Msf::RhostsWalker.new(rhosts, mod_with_opts.datastore)
+
     begin
       # Check if this is a scanner module or doesn't target remote hosts
-      if rhosts.blank? || mod.class.included_modules.include?(Msf::Auxiliary::Scanner)
-        mod.run_simple(
+      if rhosts.blank? ||
+         mod.class.included_modules.include?(Msf::Auxiliary::MultipleTargetHosts) ||
+         !mod.datastore.options.key?('RHOSTS')
+        mod_with_opts.run_simple({
           'Action'         => args[:action],
-          'OptionStr'      => args[:datastore_options].map { |k,v| "#{k}=#{v}" }.join(','),
           'LocalInput'     => driver.input,
           'LocalOutput'    => driver.output,
           'RunAsJob'       => jobify,
           'Quiet'          => args[:quiet]
-        )
+        })
       # For multi target attempts with non-scanner modules.
       else
-        rhosts_opt = Msf::OptAddressRange.new('RHOSTS')
-        if !rhosts_opt.valid?(rhosts)
-          print_error("Auxiliary failed: option RHOSTS failed to validate.")
-          return false
-        end
-
-        rhosts_range = Rex::Socket::RangeWalker.new(rhosts_opt.normalize(rhosts))
-        rhosts_range.each_host do |rhost|
-          nmod = mod.replicant
-          nmod.datastore['RHOST'] = rhost[:address]
-          nmod.datastore['VHOST'] = rhost[:hostname] if nmod.options.include?('VHOST') && nmod.datastore['VHOST'].blank?
-          print_status("Running module against #{rhost[:address]}")
-          nmod.run_simple(
+        # When RHOSTS is split, the validation changes slightly, so perform it reports the host the validation failed for
+        mod_with_opts.validate
+        rhosts_walker.each do |datastore|
+          mod_with_opts = mod.replicant
+          mod_with_opts.datastore.merge!(datastore)
+          print_status("Running module against #{datastore['RHOSTS']}")
+          mod_with_opts.run_simple({
             'Action'         => args[:action],
-            'OptionStr'      => args[:datastore_options].map { |k,v| "#{k}=#{v}" }.join(','),
             'LocalInput'     => driver.input,
             'LocalOutput'    => driver.output,
             'RunAsJob'       => false,
             'Quiet'          => args[:quiet]
-          )
+          })
         end
       end
     rescue ::Timeout::Error
@@ -96,21 +98,22 @@ class Auxiliary
       end
     rescue ::Interrupt
       print_error("Auxiliary interrupted by the console user")
+    rescue ::Msf::OptionValidateError => e
+      ::Msf::Ui::Formatter::OptionValidateError.print_error(mod_with_opts, e)
+      return false
     rescue ::Exception => e
       print_error("Auxiliary failed: #{e.class} #{e}")
-      if(e.class.to_s != 'Msf::OptionValidateError')
-        print_error("Call stack:")
-        e.backtrace.each do |line|
-          break if line =~ /lib.msf.base.simple/
-          print_error("  #{line}")
-        end
+      print_error("Call stack:")
+      e.backtrace.each do |line|
+        break if line =~ /lib.msf.base.simple/
+        print_error("  #{line}")
       end
 
       return false
     end
 
-    if (jobify && mod.job_id)
-      print_status("Auxiliary module running as background job #{mod.job_id}.")
+    if (jobify && mod_with_opts.job_id)
+      print_status("Auxiliary module running as background job #{mod_with_opts.job_id}.")
     else
       print_status("Auxiliary module execution completed")
     end
@@ -120,10 +123,7 @@ class Auxiliary
   alias cmd_exploit_tabs cmd_run_tabs
 
   def cmd_run_help
-    print_line "Usage: run [options]"
-    print_line
-    print_line "Launches an auxiliary module."
-    print @@module_opts.usage
+    print_module_run_or_check_usage(command: :run, options: @@module_opts)
   end
 
   alias cmd_exploit_help cmd_run_help
@@ -132,8 +132,14 @@ class Auxiliary
   # Reloads an auxiliary module and executes it
   #
   def cmd_rerun(*args)
+    opts = {}
+    if args.include?('-r') || args.include?('--reload-libs')
+      driver.run_single('reload_lib -a')
+      opts[:previously_reloaded] = true
+    end
+
     if reload(true)
-      cmd_run(*args)
+      cmd_run(*args, opts: opts)
     end
   end
 
@@ -146,9 +152,15 @@ class Auxiliary
   # vulnerable.
   #
   def cmd_rcheck(*args)
+    opts = {}
+    if args.include?('-r') || args.include?('--reload-libs')
+      driver.run_single('reload_lib -a')
+      opts[:previously_reloaded] = true
+    end
+
     reload()
 
-    cmd_check(*args)
+    cmd_check(*args, opts: opts)
   end
 
   alias cmd_recheck cmd_rcheck

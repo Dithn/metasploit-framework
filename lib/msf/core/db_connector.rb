@@ -47,7 +47,7 @@ module DbConnector
 
   # Connect to the required database
   #
-  # @Example Connect to a remote http service
+  # @example Connect to a remote http service
   #   db_connect(
   #     framework,
   #     {
@@ -130,7 +130,7 @@ module DbConnector
   # Connect to a database via the supplied yaml file
   #
   def self.db_connect_yaml(framework, opts)
-    file = opts[:yaml_file] || ::File.join(Msf::Config.get_config_root, 'database.yml')
+    file = opts[:yaml_file] || ::File.join(Msf::Config.config_directory, 'database.yml')
     file = ::File.expand_path(file)
     unless ::File.exist?(file)
       return { error: 'File not found' }
@@ -159,7 +159,7 @@ module DbConnector
     unless framework.db.active
       error = 'No local database connected, meaning some Metasploit features will not be available. A full list of '\
       'the affected features & database setup instructions can be found here: '\
-      'https://github.com/rapid7/metasploit-framework/wiki/msfdb:-Database-Features-&-How-to-Set-up-a-Database-for-Metasploit'
+      'https://docs.metasploit.com/docs/using-metasploit/intermediate/metasploit-database-support.html'
 
       return {
         error: error
@@ -247,6 +247,7 @@ module DbConnector
       targ,name = dest.split('/')
       (name = targ and targ = nil) if not name
       res[:host],res[:port] = targ.split(':') if targ
+      name = name&.split('?')&.first
     end
     res[:name] = name || 'metasploit3'
     res
@@ -257,7 +258,7 @@ module DbConnector
   end
 
   def self.build_postgres_url
-    conn_params = ApplicationRecord.connection_config
+    conn_params = ApplicationRecord.connection_db_config.configuration_hash
     url = ''
     url += "#{conn_params[:username]}" if conn_params[:username]
     url += ":#{conn_params[:password]}" if conn_params[:password]

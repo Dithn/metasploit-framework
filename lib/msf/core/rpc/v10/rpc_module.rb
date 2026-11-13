@@ -13,7 +13,7 @@ class RPC_Module < RPC_Base
   # @example Here's how you would use this from the client:
   #  rpc.call('module.exploits')
   def rpc_exploits
-    { "modules" => self.framework.exploits.keys }
+    { "modules" => self.framework.exploits.module_refnames }
   end
 
 
@@ -24,7 +24,7 @@ class RPC_Module < RPC_Base
   # @example Here's how you would use this from the client:
   #  rpc.call('module.evasion')
   def rpc_evasion
-    { "modules" => self.framework.evasion.keys }
+    { "modules" => self.framework.evasion.module_refnames }
   end
 
 
@@ -35,7 +35,7 @@ class RPC_Module < RPC_Base
   # @example Here's how you would use this from the client:
   #  rpc.call('module.auxiliary')
   def rpc_auxiliary
-    { "modules" => self.framework.auxiliary.keys }
+    { "modules" => self.framework.auxiliary.module_refnames }
   end
 
 
@@ -185,7 +185,7 @@ class RPC_Module < RPC_Base
   # @example Here's how you would use this from the client:
   #  rpc.call('module.post')
   def rpc_post
-    { "modules" => self.framework.post.keys }
+    { "modules" => self.framework.post.module_refnames }
   end
 
 
@@ -221,9 +221,12 @@ class RPC_Module < RPC_Base
     res['license'] = m.license
     res['filepath'] = m.file_path
     res['arch'] = m.arch.map { |x| x.to_s }
-    res['platform'] = m.platform.platforms.map { |x| x.to_s }
+    res['platform'] = m.platform.platforms.map { |x| x.respond_to?(:realname) ? x.realname : x.to_s }
     res['authors'] = m.author.map { |a| a.to_s }
     res['privileged'] = m.privileged?
+    res['check'] = m.has_check?
+    res['default_options'] = m.default_options
+    res['notes'] = m.notes
 
     res['references'] = []
     m.references.each do |r|
@@ -236,7 +239,7 @@ class RPC_Module < RPC_Base
         res['targets'][i] = m.targets[i].name
       end
 
-      if (m.default_target)
+      if m.default_target
         res['default_target'] = m.default_target
       end
 
@@ -277,16 +280,17 @@ class RPC_Module < RPC_Base
     res
   end
 
-  def module_short_info(m)
-    res = {}
-    res['type'] = m.type
-    res['name'] = m.name
-    res['fullname'] = m.fullname
-    res['rank'] = RankingName[m.rank].to_s
-    res['disclosuredate'] = m.disclosure_date.nil? ? "" : m.disclosure_date.strftime("%Y-%m-%d")
-    res
-  end
-
+  # returns a list of module names that match the search string.
+  #
+  # @param match [string] the search string.
+  # @return [hash] a list of modules. it contains the following key:
+  #  * 'type' [string] The module type (exploit, auxiliary, post, payload, etc.)
+  #  * 'name' [string] The module name
+  #  * 'fullname' [string] The full module path
+  #  * 'rank' [string] The module rank (excellent, great, good, normal, etc.)
+  #  * 'disclosuredate' [string] The module disclosure date (YYYY-MM-DD)
+  # @example here's how you would use this from the client:
+  #  rpc.call('module.search', 'smb type:exploit')
   def rpc_search(match)
     matches = []
     self.framework.search(match).each do |m|
@@ -349,6 +353,8 @@ class RPC_Module < RPC_Base
   def rpc_compatible_sessions(mname)
     if mname.start_with? 'exploit/'
       m = _find_module('exploit',mname)
+    elsif mname.start_with? 'auxiliary/'
+      m = _find_module('auxiliary', mname)
     else
       m = _find_module('post',mname)
     end
@@ -467,7 +473,6 @@ class RPC_Module < RPC_Base
     res
   end
 
-
   # Executes a module.
   #
   # @param [String] mtype Module type. Supported types include (case-sensitive):
@@ -491,6 +496,7 @@ class RPC_Module < RPC_Base
   #  opts = {'LHOST' => '0.0.0.0', 'LPORT'=>6669, 'PAYLOAD'=>'windows/meterpreter/reverse_tcp'}
   #  rpc.call('module.execute', 'exploit', 'multi/handler', opts)
   def rpc_execute(mtype, mname, opts)
+    _validate_options!(opts)
     mod = _find_module(mtype,mname)
 
     case mtype
@@ -515,10 +521,14 @@ class RPC_Module < RPC_Base
   #                       * auxiliary
   # @param [String] mname Module name. For example: 'windows/smb/ms08_067_netapi'.
   # @param [Hash] opts Options for the module (such as datastore options).
-  # @raise [Msf::RPC::Exception] Module not found (either wrong type or name).
+  # @raise [Msf::RPC::Exception] Module not found (either wrong type or name),
+  #                              or the target module does not implement a
+  #                              check method.
   # @return
   def rpc_check(mtype, mname, opts)
-    mod = _find_module(mtype,mname)
+    _validate_options!(opts)
+    mod = _find_module(mtype, mname)
+    error(500, Msf::Exploit::CheckCode::Unsupported.message) unless mod.has_check?
     case mtype
     when 'exploit'
       _check_exploit(mod, opts)
@@ -536,7 +546,7 @@ class RPC_Module < RPC_Base
       if r[:error]
         {"status" => "errored", "error" => r[:error]}
       else
-        if r[:result].length == 1
+        if r[:result] && r[:result].length == 1
           # A hash of one IP => result
           # TODO: make hashes of IP => result the normal case
           {"status" => "completed", "result" => r[:result].values.first}
@@ -551,7 +561,7 @@ class RPC_Module < RPC_Base
     elsif self.job_status_tracker.waiting? uuid
       {"status" => "ready"}
     else
-      error(404, "Results not found for module instance #{uuid}")
+      error(500, "Results not found for module instance #{uuid}")
     end
   end
 
@@ -723,6 +733,44 @@ class RPC_Module < RPC_Base
 
 private
 
+  # Structural validation for the datastore options hash forwarded to
+  # module.execute / module.check. Rejects obviously abusive input
+  # (non-hash, nested structures, oversized values, malformed keys) at the
+  # RPC boundary so callers other than the MCP transport -- which performs
+  # additional policy-level validation of its own -- still have basic
+  # defence-in-depth against DoS-style payloads.
+  RPC_MODULE_OPTIONS_MAX_KEYS = 100
+  RPC_MODULE_OPTIONS_KEY_MAX_LENGTH = 128
+  RPC_MODULE_OPTIONS_VALUE_MAX_BYTES = 8 * 1024
+  RPC_MODULE_OPTION_SCALAR_TYPES = [String, Integer, Float, TrueClass, FalseClass, NilClass].freeze
+
+  def _validate_options!(opts)
+    error(400, 'Module options must be a Hash') unless opts.is_a?(Hash)
+
+    if opts.size > RPC_MODULE_OPTIONS_MAX_KEYS
+      error(400, "Module options has too many keys (max #{RPC_MODULE_OPTIONS_MAX_KEYS})")
+    end
+
+    opts.each do |key, value|
+      unless key.is_a?(String) || key.is_a?(Symbol)
+        error(400, "Invalid module option key type: #{key.class}")
+      end
+      if key.to_s.length > RPC_MODULE_OPTIONS_KEY_MAX_LENGTH
+        error(400, "Module option key too long (max #{RPC_MODULE_OPTIONS_KEY_MAX_LENGTH} chars)")
+      end
+      unless RPC_MODULE_OPTION_SCALAR_TYPES.any? { |klass| value.is_a?(klass) }
+        error(400, "Invalid module option value for #{key}: must be a scalar")
+      end
+      if value.is_a?(String) && value.bytesize > RPC_MODULE_OPTIONS_VALUE_MAX_BYTES
+        error(400, "Module option #{key} string value exceeds #{RPC_MODULE_OPTIONS_VALUE_MAX_BYTES} bytes")
+      end
+    end
+  end
+
+  # @param [String] mtype The module type
+  # @param [String] mname The module name
+  # @return [Msf::Module] The module if found
+  # @raise [Msf::RPC::Exception] An exception is raised if the module is not found
   def _find_module(mtype,mname)
 
     if mname !~ /^(exploit|payload|nop|encoder|auxiliary|post|evasion)\//
@@ -738,35 +786,42 @@ private
   end
 
   def _run_exploit(mod, opts)
-    s = Msf::Simple::Exploit.exploit_simple(mod, {
+    if opts['PAYLOAD'].blank?
+      opts['PAYLOAD'] = Msf::Payload.choose_payload(mod)
+    end
+
+    Msf::Simple::Exploit.exploit_simple(mod, {
       'Payload'  => opts['PAYLOAD'],
       'Target'   => opts['TARGET'],
       'RunAsJob' => true,
-      'Options'  => opts
+      'Options'  => opts,
+      'JobListener' => self.job_status_tracker
     })
     {
       "job_id" => mod.job_id,
-      "uuid" => mod.uuid
+      "uuid" => mod.run_uuid
     }
   end
 
   def _run_auxiliary(mod, opts)
-    uuid, job = Msf::Simple::Auxiliary.run_simple(mod,{
+    Msf::Simple::Auxiliary.run_simple(mod,{
       'Action'   => opts['ACTION'],
       'RunAsJob' => true,
-      'Options'  => opts
-    }, job_listener: self.job_status_tracker)
+      'Options'  => opts,
+      'JobListener' => self.job_status_tracker
+    })
     {
-      "job_id" => job,
-      "uuid" => uuid
+      "job_id" => mod.job_id,
+      "uuid" => mod.run_uuid
     }
   end
 
   def _check_exploit(mod, opts)
     uuid, job = Msf::Simple::Exploit.check_simple(mod,{
         'RunAsJob' => true,
-        'Options'  => opts
-    }, job_listener: self.job_status_tracker)
+        'Options'  => opts,
+        'JobListener' => self.job_status_tracker
+    })
     {
       "job_id" => job,
       "uuid" => uuid
@@ -777,8 +832,9 @@ private
     uuid, job = Msf::Simple::Auxiliary.check_simple(mod,{
         'Action'   => opts['ACTION'],
         'RunAsJob' => true,
-        'Options'  => opts
-    }, job_listener: self.job_status_tracker)
+        'Options'  => opts,
+        'JobListener' => self.job_status_tracker
+    })
     {
       "job_id" => job,
       "uuid" => uuid
@@ -788,11 +844,12 @@ private
   def _run_post(mod, opts)
     Msf::Simple::Post.run_simple(mod, {
       'RunAsJob' => true,
-      'Options'  => opts
+      'Options'  => opts,
+      'JobListener' => self.job_status_tracker
     })
     {
       "job_id" => mod.job_id,
-      "uuid" => mod.uuid
+      "uuid" => mod.run_uuid
     }
   end
 
@@ -801,12 +858,13 @@ private
       'Payload'  => opts['PAYLOAD'],
       'Target'   => opts['TARGET'],
       'RunAsJob' => true,
-      'Options'  => opts
+      'Options'  => opts,
+      'JobListener' => self.job_status_tracker
     })
 
     {
       'job_id' => mod.job_id,
-      'uuid'   => mod.uuid
+      'uuid'   => mod.run_uuid
     }
   end
 
@@ -842,8 +900,18 @@ private
     end
   end
 
+  def module_short_info(m)
+    res = {}
+    res['type'] = m.type
+    res['name'] = m.name
+    res['fullname'] = m.fullname
+    res['rank'] = RankingName[m.rank].to_s
+    res['disclosuredate'] = m.disclosure_date.nil? ? "" : m.disclosure_date.strftime("%Y-%m-%d")
+    res
+  end
+
+
 
 end
 end
 end
-

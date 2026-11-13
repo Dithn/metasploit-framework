@@ -42,7 +42,16 @@ class MetasploitModule < Msf::Post
         'License' => MSF_LICENSE,
         'Author' => [ 'Tim Brown <timb[at]nth-dimension.org.uk>'],
         'Platform' => %w[linux osx unix solaris aix],
-        'SessionTypes' => [ 'meterpreter', 'shell' ]
+        'SessionTypes' => [ 'meterpreter', 'shell' ],
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [IOC_IN_LOGS],
+          'Reliability' => []
+        },
+        'References' => [
+          ['ATT&CK', Mitre::Attack::Technique::T1558_STEAL_OR_FORGE_KERBEROS_TICKETS],
+          ['ATT&CK', Mitre::Attack::Technique::T1005_DATA_FROM_LOCAL_SYSTEM]
+        ]
       )
     )
     register_options([

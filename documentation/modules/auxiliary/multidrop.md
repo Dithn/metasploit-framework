@@ -19,7 +19,7 @@ Microsoft Windows
 
 ## Options
 
-**FILENAME**
+### FILENAME
 This option allows you to customise the generated filename and filetpye that is generated.
 
 To generate desktop.ini configure a filename of desktop.ini
@@ -29,7 +29,7 @@ To generate a lnk file configure a filename of anyname.lnk
 
 Filetype generation is based on the file extension.
 
-**LHOST**
+### LHOST
 This option allows you to set the IP address of the SMB Listener that the document points to
 This can be changed using set LHOST 192.168.1.25
 
@@ -64,7 +64,7 @@ Basic options:
 Description:
   This module dependent on the given filename extension creates either 
   a .lnk, .scf, .url, desktop.ini file which includes a reference to 
-  the the specified remote host, causing SMB connections to be 
+  the specified remote host, causing SMB connections to be 
   initiated from any user that views the file.
 
 References:

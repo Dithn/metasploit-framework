@@ -15,10 +15,14 @@ class MetasploitModule < Msf::Auxiliary
         },
         'Author' => [ 'natto97' ],
         'License' => MSF_LICENSE,
-        'References' =>
-          [
-            [ 'URL', 'https://honeyscore.shodan.io/']
-          ]
+        'References' => [
+          [ 'URL', 'https://honeyscore.shodan.io/']
+        ],
+        'Notes' => {
+          'Stability' => [],
+          'SideEffects' => [],
+          'Reliability' => []
+        }
       )
     )
     register_options(

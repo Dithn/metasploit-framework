@@ -412,13 +412,6 @@ module Msf
         raw_payload = apk_backdoor.backdoor_apk(template, generate_raw_payload)
         gen_payload = raw_payload
       else
-        if payload_module.is_a?(Msf::Payload::Windows::PayloadDBConf)
-          payload_module.datastore.import_options_from_hash(datastore)
-          ds_opt = payload_module.datastore
-          cli_print("[!] Database is not active! Payload key and nonce must be manually set when creating handler") unless framework.db.active
-          cli_print("[-] Please ensure payload key and nonce match when setting up handler: #{ds_opt['ChachaKey']} - #{ds_opt['ChachaNonce']}")
-        end
-
         raw_payload = generate_raw_payload
         raw_payload = add_shellcode(raw_payload)
 
@@ -548,18 +541,18 @@ module Msf
     # @param shellcode [String] The shellcode to prepend the NOPs to
     # @return [String] the shellcode with the appropriate nopsled affixed
     def prepend_nops(shellcode)
-      if nops > 0
-        framework.nops.each_module_ranked('Arch' => [arch]) do |name, mod|
-          nop = framework.nops.create(name)
-          raw = nop.generate_sled(nops, {'BadChars' => badchars, 'SaveRegisters' => [ 'esp', 'ebp', 'esi', 'edi' ] })
-          if raw
-            cli_print "Successfully added NOP sled of size #{raw.length} from #{name}"
-            return raw + shellcode
-         end
+      return shellcode unless nops > 0
+
+      framework.nops.each_module_ranked('Arch' => [arch]) do |name, mod|
+        nop = framework.nops.create(name)
+        raw = nop.generate_sled(nops, {'BadChars' => badchars, 'SaveRegisters' => [ 'esp', 'ebp', 'esi', 'edi' ] })
+        if raw
+          cli_print "Successfully added NOP sled of size #{raw.length} from #{name}"
+          return raw + shellcode
         end
-      else
-        shellcode
       end
+
+      shellcode
     end
 
     # This method runs a specified encoder, for a number of defined iterations against the shellcode.
@@ -598,7 +591,7 @@ module Msf
     # @return [True] if the payload is a valid Metasploit Payload
     # @return [False] if the payload is not a valid Metasploit Payload
     def payload_is_valid?
-      (framework.payloads.keys + ['stdin']).include? payload
+      (framework.payloads.module_refnames + ['stdin']).include? payload
     end
 
   end

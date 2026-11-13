@@ -14,33 +14,27 @@ class MetasploitModule < Msf::Auxiliary
 
   def initialize
     super(
-      'Name'           => 'Octopus Deploy Login Utility',
-      'Description'    => %q{
+      'Name' => 'Octopus Deploy Login Utility',
+      'Description' => %q{
         This module simply attempts to login to an Octopus Deploy server using a specific
         username and password. It has been confirmed to work on version 3.4.4
       },
-      'Author'         => [ 'James Otten <jamesotten1[at]gmail.com>' ],
-      'License'        => MSF_LICENSE
+      'Author' => [ 'James Otten <jamesotten1[at]gmail.com>' ],
+      'License' => MSF_LICENSE
     )
 
     register_options(
       [
         Opt::RPORT(80),
         OptString.new('TARGETURI', [true, 'URI for login. Default is /api/users/login', '/api/users/login'])
-      ])
-
-    deregister_options('PASSWORD_SPRAY')
+      ]
+    )
   end
 
   def run_host(ip)
-    cred_collection = Metasploit::Framework::CredentialCollection.new(
-      blank_passwords: datastore['BLANK_PASSWORDS'],
-      pass_file: datastore['PASS_FILE'],
-      password: datastore['PASSWORD'],
-      user_file: datastore['USER_FILE'],
-      userpass_file: datastore['USERPASS_FILE'],
+    cred_collection = build_credential_collection(
       username: datastore['USERNAME'],
-      user_as_pass: datastore['USER_AS_PASS']
+      password: datastore['PASSWORD']
     )
 
     scanner = Metasploit::Framework::LoginScanner::OctopusDeploy.new(
@@ -55,6 +49,12 @@ class MetasploitModule < Msf::Auxiliary
       )
     )
 
+    msg = scanner.check_setup
+    if msg
+      print_error("#{peer} - #{msg}")
+      return
+    end
+
     scanner.scan! do |result|
       credential_data = result.to_h
       credential_data.merge!(
@@ -66,10 +66,10 @@ class MetasploitModule < Msf::Auxiliary
         credential_data[:core] = credential_core
         create_credential_login(credential_data)
 
-        print_good "#{ip}:#{rport} - Login Successful: #{result.credential}"
+        print_good "#{Rex::Socket.to_authority(ip, rport)} - Login Successful: #{result.credential}"
       else
         invalidate_login(credential_data)
-        vprint_error "#{ip}:#{rport} - LOGIN FAILED: #{result.credential} (#{result.status})"
+        vprint_error "#{Rex::Socket.to_authority(ip, rport)} - LOGIN FAILED: #{result.credential} (#{result.status})"
       end
     end
   end

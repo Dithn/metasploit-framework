@@ -3,8 +3,6 @@
 # Current source: https://github.com/rapid7/metasploit-framework
 ##
 
-require 'metasploit/framework/hashes/identify'
-
 class MetasploitModule < Msf::Auxiliary
   include Msf::Exploit::Remote::TcpServer
   include Msf::Auxiliary::Report
@@ -18,26 +16,29 @@ class MetasploitModule < Msf::Auxiliary
       },
       'Author' => ['ddz', 'hdm', 'h00die'],
       'License' => MSF_LICENSE,
-      'Actions' =>
-        [
-          [ 'Capture', 'Description' => 'Run SMTP capture server' ]
-        ],
-      'PassiveActions' =>
-        [
-          'Capture'
-        ],
+      'Actions' => [
+        [ 'Capture', { 'Description' => 'Run SMTP capture server' } ]
+      ],
+      'PassiveActions' => [
+        'Capture'
+      ],
       'DefaultAction' => 'Capture',
-      'References' =>
-        [
-          [ 'URL', 'https://www.samlogic.net/articles/smtp-commands-reference-auth.htm' ],
-          [ 'URL', 'tools.ietf.org/html/rfc5321' ],
-          [ 'URL', 'http://fehcom.de/qmail/smtpauth.html' ]
-        ],
+      'References' => [
+        [ 'URL', 'https://www.samlogic.net/articles/smtp-commands-reference-auth.htm' ],
+        [ 'URL', 'https://datatracker.ietf.org/doc/html/rfc5321' ],
+        [ 'URL', 'http://fehcom.de/qmail/smtpauth.html' ]
+      ],
+      'Notes' => {
+        'Stability' => [CRASH_SAFE],
+        'SideEffects' => [],
+        'Reliability' => []
+      }
     )
 
     register_options(
       [
-        OptPort.new('SRVPORT', [ true, 'The local port to listen on.', 25 ])
+        OptPort.new('SRVPORT', [ true, 'The local port to listen on.', 25 ]),
+        OptBool.new('AUTHPROMPT', [ true, 'Require authentication from clients', false ])
       ]
     )
   end
@@ -57,9 +58,9 @@ class MetasploitModule < Msf::Auxiliary
     data = data.drop(1)
 
     # if only a username is submitted, it will appear as \00un\00
-    # we already cut off the empty username, so nowe we want to add on the empty password
+    # we already cut off the empty username, so now we want to add on the empty password
     if data.length == 1
-      data << ""
+      data << ''
     end
     data
   end
@@ -75,7 +76,7 @@ class MetasploitModule < Msf::Auxiliary
 
     print_status("SMTP: #{@state[client][:name]} Command: #{data.strip}")
 
-    if (@state[client][:data_mode])
+    if @state[client][:data_mode]
       @state[client][:data_buff] ||= ''
       @state[client][:data_buff] += data
 
@@ -87,7 +88,7 @@ class MetasploitModule < Msf::Auxiliary
         report_note(
           host: @state[client][:ip],
           type: 'smtp_message',
-          data: @state[client][:data_buff][0, idx]
+          data: { :message => @state[client][:data_buff][0, idx] }
         )
         @state[client][:data_buff][0, idx].split("\n").each do |line|
           print_status("SMTP: #{@state[client][:name]} EMAIL: #{line.strip}")
@@ -101,7 +102,7 @@ class MetasploitModule < Msf::Auxiliary
       return
     end
 
-    if (@state[client][:auth_login])
+    if @state[client][:auth_login]
       if @state[client][:user].nil?
         @state[client][:user] = Rex::Text.decode_base64(data)
         client.put "334 #{Rex::Text.encode_base64('Password')}\r\n"
@@ -122,7 +123,7 @@ class MetasploitModule < Msf::Auxiliary
       return
     end
 
-    if (@state[client][:auth_plain])
+    if @state[client][:auth_plain]
       # this data is \00 delimited, and has 3 fields: un\00un\00\pass.  Not sure why a double username
       un_pass = auth_plain_parser data
 
@@ -142,7 +143,7 @@ class MetasploitModule < Msf::Auxiliary
       return
     end
 
-    if (@state[client][:auth_cram])
+    if @state[client][:auth_cram]
       # data is <username><space><digest aka hash>
       decoded = Rex::Text.decode_base64(data).split(' ')
       @state[client][:user] = decoded.first
@@ -169,7 +170,11 @@ class MetasploitModule < Msf::Auxiliary
 
     case cmd.upcase
     when 'HELO', 'EHLO'
-      client.put "250 OK\r\n"
+      if datastore['AUTHPROMPT']
+        client.put "250 AUTH LOGIN PLAIN\r\n"
+      else
+        client.put "250 OK\r\n"
+      end
       return
 
     when 'MAIL'
@@ -236,7 +241,7 @@ class MetasploitModule < Msf::Auxiliary
         return
       elsif arg == 'CRAM-MD5'
         # create and send challenge
-        challenge = "<#{Rex::Text.rand_text_numeric(9..12)}@#{datastore['SRVHOST']}>"
+        challenge = "<#{Rex::Text.rand_text_numeric(9..12)}@#{srvhost}>"
         client.put "334 #{Rex::Text.encode_base64(challenge)}\r\n"
         @state[client][:auth_cram] = true
         @state[client][:auth_cram_challenge] = challenge
@@ -249,7 +254,6 @@ class MetasploitModule < Msf::Auxiliary
       vprint_error("Unknown command: #{arg}")
     end
     client.put "503 Server Error\r\n"
-
   end
 
   def report_cred(opts)
@@ -267,7 +271,7 @@ class MetasploitModule < Msf::Auxiliary
         username: opts[:user],
         private_data: opts[:password],
         private_type: :nonreplayable_hash,
-        jtr_format: identify_hash(opts[:password])
+        jtr_format: Metasploit::Framework::Hashes.identify_hash(opts[:password])
       }.merge(service_data)
     else
       credential_data = {

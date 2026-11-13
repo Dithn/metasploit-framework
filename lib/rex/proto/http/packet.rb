@@ -68,10 +68,30 @@ class Packet
   end
 
   #
+  # The `body` attribute was overridden by subclasses, causing quirky behaviour issues,
+  # such as when a POST request contained query string parameters resulting in the query
+  # string being prepended to the data that was contained in the body. To avoid this
+  # utterly ridiculous behaviour while maintaning the status-quo of having the request
+  # class shoe-horn query strings into POST bodies, we're using `body_bytes` as an internal
+  # buffer to collect the request's body, rather than using the attribute, which prevents
+  # this insanity from happening.
+  #
+  def body=(val)
+    @body_bytes = val
+  end
+
+  def body
+    @body_bytes
+  end
+
+  #
   # Parses the supplied buffer.  Returns one of the two parser processing
   # codes (Completed, Partial, or Error).
   #
-  def parse(buf)
+  # @param [String] buf The buffer to parse; possibly not a complete request/response
+  # @param [Hash] opts Parsing options
+  # @option [Boolean] orig_method The HTTP method used in an associated request, if applicable
+  def parse(buf, opts={})
 
     # Append the incoming buffer to the buffer queue.
     self.bufq += buf.to_s
@@ -80,13 +100,15 @@ class Packet
 
       # Process the header
       if(self.state == ParseState::ProcessingHeader)
-        parse_header
+        parse_header(opts)
       end
 
       # Continue on to the body if the header was processed
       if(self.state == ParseState::ProcessingBody)
-        # Chunked encoding sets the parsing state on its own
-        if (self.body_bytes_left == 0 and not self.transfer_chunked)
+        # Chunked encoding sets the parsing state on its own.
+        # HEAD requests can return immediately.
+        orig_method = opts.fetch(:orig_method) { '' }
+        if (self.body_bytes_left == 0 && (!self.transfer_chunked || orig_method == 'HEAD'))
           self.state = ParseState::Completed
         else
           parse_body
@@ -111,7 +133,7 @@ class Packet
     self.inside_chunk     = false
     self.headers.reset
     self.bufq  = ''
-    self.body  = ''
+    @body_bytes  = ''
   end
 
   #
@@ -122,7 +144,7 @@ class Packet
     self.transfer_chunked = false
     self.inside_chunk     = false
     self.headers.reset
-    self.body  = ''
+    @body_bytes  = ''
   end
 
   #
@@ -249,7 +271,6 @@ class Packet
   attr_accessor :error
   attr_accessor :state
   attr_accessor :bufq
-  attr_accessor :body
   attr_accessor :auto_cl
   attr_accessor :max_data
   attr_accessor :transfer_chunked
@@ -280,24 +301,27 @@ protected
 
   ##
   #
-  # Parsing
+  # Parse the HTTP header returned by the target server.
   #
+  # @param [Hash] opts Parsing options
+  # @option [Boolean] orig_method The HTTP method used in an associated request, if applicable
   ##
-
-  def parse_header
+  def parse_header(opts)
 
     head,data = self.bufq.split(/\r?\n\r?\n/, 2)
 
-    return if not data
+    return if data.nil?
 
     self.headers.from_s(head)
     self.bufq = data || ""
 
     # Set the content-length to -1 as a placeholder (read until EOF)
     self.body_bytes_left = -1
+    orig_method = opts.fetch(:orig_method) { '' }
+    self.body_bytes_left = 0 if orig_method == 'HEAD'
 
-    # Extract the content length if it was specified
-    if (self.headers['Content-Length'])
+    # Extract the content length if it was specified (ignoring it for HEAD requests, per RFC9110)
+    if (self.headers['Content-Length'] && orig_method != 'HEAD')
       self.body_bytes_left = self.headers['Content-Length'].to_i
     end
 
@@ -323,6 +347,9 @@ protected
           #
           # So if we haven't seen either a Content-Length or a
           # Transfer-Encoding header, there shouldn't be a message body.
+          self.body_bytes_left = 0
+        elsif (self.headers['Connection']&.downcase == 'upgrade' && self.headers['Upgrade']&.downcase == 'websocket')
+          # The server appears to be responding to a websocket request
           self.body_bytes_left = 0
         #else
         # Otherwise we need to keep reading until EOF
@@ -398,11 +425,11 @@ protected
     # to our body state.
     if (self.body_bytes_left > 0)
       part = self.bufq.slice!(0, self.body_bytes_left)
-      self.body += part
+      @body_bytes += part
       self.body_bytes_left -= part.length
     # Otherwise, just read it all.
     else
-      self.body += self.bufq
+      @body_bytes += self.bufq
       self.bufq  = ''
     end
 

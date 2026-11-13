@@ -1,5 +1,4 @@
 # -*- coding: binary -*-
-require 'metasm'
 
 module Msf
 
@@ -43,6 +42,8 @@ class Payload < Msf::Module
     # applicable.
     #
     Stage  = (1 << 2)
+
+    Adapter = (1 << 3)
   end
 
   #
@@ -50,7 +51,6 @@ class Payload < Msf::Module
   #
   def initialize(info = {})
     super
-    self.can_cleanup = true
 
     #
     # Gets the Dependencies if the payload requires external help
@@ -58,18 +58,17 @@ class Payload < Msf::Module
     #
     self.module_info['Dependencies'] = self.module_info['Dependencies'] || []
 
-    # If this is a staged payload but there is no stage information,
+    # If this is an adapted or staged payload but there is no stage information,
     # then this is actually a stager + single combination.  Set up the
     # information hash accordingly.
-    if self.class.include?(Msf::Payload::Single) and
-      self.class.include?(Msf::Payload::Stager)
-      self.module_info['Stage'] = {}
+    if (self.class.include?(Msf::Payload::Adapter) || self.class.include?(Msf::Payload::Single)) and self.class.include?(Msf::Payload::Stager)
 
       if self.module_info['Payload']
         self.module_info['Stage']['Payload']  = self.module_info['Payload']['Payload'] || ""
         self.module_info['Stage']['Assembly'] = self.module_info['Payload']['Assembly'] || ""
         self.module_info['Stage']['Offsets']  = self.module_info['Payload']['Offsets'] || {}
-      else
+      elsif !self.module_info['Stage']
+        self.module_info['Stage'] = {}
         self.module_info['Stage']['Payload']  = ""
         self.module_info['Stage']['Assembly'] = ""
         self.module_info['Stage']['Offsets']  = {}
@@ -135,6 +134,8 @@ class Payload < Msf::Module
   #
   def payload_type_s
     case payload_type
+      when Type::Adapter
+        return "adapter"
       when Type::Stage
         return "stage"
       when Type::Stager
@@ -157,7 +158,12 @@ class Payload < Msf::Module
   # This method returns an optional cached size value
   #
   def self.cached_size
-    csize = (const_defined?('CachedSize')) ? const_get('CachedSize') : nil
+    csize = const_defined?('CachedSize') ? const_get('CachedSize') : nil
+    if ancestors.include?(Msf::Payload::Stager)
+      csize_overrides = const_defined?('CachedSizeOverrides') ? const_get('CachedSizeOverrides') : {}
+      csize = csize_overrides.fetch(self.refname, csize)
+    end
+
     csize == :dynamic ? nil : csize
   end
 
@@ -165,7 +171,12 @@ class Payload < Msf::Module
   # This method returns whether the payload generates variable-sized output
   #
   def self.dynamic_size?
-    csize = (const_defined?('CachedSize')) ? const_get('CachedSize') : nil
+    csize = const_defined?('CachedSize') ? const_get('CachedSize') : nil
+    if ancestors.include?(Msf::Payload::Stager)
+      csize_overrides = const_defined?('CachedSizeOverrides') ? const_get('CachedSizeOverrides') : {}
+      csize = csize_overrides.fetch(self.refname, csize)
+    end
+
     csize == :dynamic
   end
 
@@ -286,9 +297,9 @@ class Payload < Msf::Module
 
   #
   # Generates the payload and returns the raw buffer to the caller.
-  #
-  def generate
-    internal_generate
+  # @param opts [Hash]
+  def generate(opts = {})
+    internal_generate(opts)
   end
 
   #
@@ -462,8 +473,72 @@ class Payload < Msf::Module
     return nops
   end
 
+  # Select a reasonable default payload and minimally configure it
+  # @param [Msf::Module] mod
+  def self.choose_payload(mod)
+    compatible_payloads = mod.compatible_payloads(
+      excluded_platforms: ['Multi'] # We don't want to select a multi payload
+    ).map(&:first)
+
+    # XXX: Determine LHOST based on global LHOST, RHOST or an arbitrary internet address
+    lhost = mod.datastore['LHOST'] || Rex::Socket.source_address(mod.datastore['RHOST'] || '50.50.50.50')
+
+    configure_payload = lambda do |payload|
+      # Directly set the payload value to override any existing user-defined value
+      mod.datastore['PAYLOAD'] = payload
+
+      # Set LHOST if this is a reverse payload
+      if payload.index('reverse')
+        mod.datastore['LHOST'] = lhost
+      end
+
+      payload
+    end
+
+    # If there is only one compatible payload, return it immediately
+    if compatible_payloads.length == 1
+      return configure_payload.call(compatible_payloads.first)
+    end
+
+    # XXX: This approach is subpar, and payloads should really be ranked!
+    preferred_payloads = [
+      # These payloads are generally reliable and common enough in practice
+      'windows/meterpreter/reverse_tcp',  # Native Windows Meterpreter (no fetch wrapper)
+      # Prefer HTTP fetch over FTP fetch for CMD payloads (more reliable, less likely to be blocked)
+      '/http/x64/meterpreter/reverse_tcp',
+      '/https/x64/meterpreter/reverse_tcp',
+      '/http/x86/meterpreter/reverse_tcp',
+      '/https/x86/meterpreter/reverse_tcp',
+      'x64/meterpreter/reverse_tcp',      # Generic x64 meterpreter (will match any fetch method)
+      'x86/meterpreter/reverse_tcp',      # Generic x86 meterpreter (will match any fetch method)
+      '/meterpreter/reverse_tcp',
+      '/shell/reverse_tcp',
+      'java/meterpreter/reverse_tcp',     # Java Meterpreter (staged)
+      'java/meterpreter_reverse_tcp',     # Java Meterpreter (stageless)
+      'java/jsp_shell_reverse_tcp',       # Java JSP shell (for JSP delivery)
+      'java/shell_reverse_tcp',
+      'cmd/unix/reverse_bash',
+      'cmd/unix/reverse_netcat',
+      'cmd/windows/powershell_reverse_tcp',
+      # Fall back on a generic payload to autoselect a specific payload
+      'generic/shell_reverse_tcp',
+      'generic/shell_bind_tcp'
+    ]
+
+    # XXX: This is not efficient in the slightest
+    preferred_payloads.each do |type|
+      payload = compatible_payloads.find { |name| name.end_with?(type) }
+
+      next unless payload
+
+      return configure_payload.call(payload)
+    end
+
+    nil
+  end
+
   #
-  # A placeholder stub, to be overriden by mixins
+  # A placeholder stub, to be overridden by mixins
   #
   def apply_prepends(raw)
     raw
@@ -513,11 +588,6 @@ class Payload < Msf::Module
   end
 
   #
-  # This attribute designates if the payload supports onsession()
-  # method calls (typically to clean up artifacts)
-  #
-  attr_accessor :can_cleanup
-  #
   # This attribute holds the string that should be prepended to the buffer
   # when it's generated.
   #
@@ -554,9 +624,10 @@ protected
   #
   # @see PayloadSet#check_blob_cache
   # @param asm [String] Assembly code to be assembled into a raw payload
+  # @param opts [Hash]
   # @return [String] The final, assembled payload
   # @raise ArgumentError if +asm+ is blank
-  def build(asm, off={})
+  def build(asm, off={}, opts = {})
     if(asm.nil? or asm.empty?)
       raise ArgumentError, "Assembly must not be empty"
     end
@@ -587,7 +658,7 @@ protected
     end
 
     # Assemble the payload from the assembly
-    a = self.arch
+    a = opts[:arch] || self.arch
     if a.kind_of? Array
       a = self.arch.first
     end
@@ -620,11 +691,11 @@ protected
   #
   # Generate the payload using our local payload blob and offsets
   #
-  def internal_generate
+  def internal_generate(opts = {})
     # Build the payload, either by using the raw payload blob defined in the
     # module or by actually assembling it
     if assembly and !assembly.empty?
-      raw = build(assembly, offsets)
+      raw = build(assembly, offsets, opts)
     else
       raw = payload.dup
     end

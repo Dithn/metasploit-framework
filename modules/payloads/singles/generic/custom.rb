@@ -3,39 +3,42 @@
 # Current source: https://github.com/rapid7/metasploit-framework
 ##
 
-
 module MetasploitModule
-
   CachedSize = 0
 
   include Msf::Payload::Single
   include Msf::Payload::Generic
 
   def initialize(info = {})
-    super(merge_info(info,
-      'Name'          => 'Custom Payload',
-      'Description'   => 'Use custom string or file as payload. Set either PAYLOADFILE or
-                PAYLOADSTR.',
-      'Author'        => 'scriptjunkie <scriptjunkie[at]scriptjunkie.us>',
-      'License'       => MSF_LICENSE,
-      'Payload'	    =>
-        {
-          'Payload' => "" # not really
+    super(
+      merge_info(
+        info,
+        'Name' => 'Custom Payload',
+        'Description' => %q{
+          Use custom string or file as payload. Set either PAYLOADFILE or
+          PAYLOADSTR.
+        },
+        'Author' => 'scriptjunkie <scriptjunkie[at]scriptjunkie.us>',
+        'License' => MSF_LICENSE,
+        'Payload' => {
+          'Payload' => '' # not really
         }
-      ))
+      )
+    )
 
     # Register options
     register_options(
       [
-        OptString.new('PAYLOADFILE', [ false, "The file to read the payload from" ] ),
-        OptString.new('PAYLOADSTR', [ false, "The string to use as a payload" ] )
-      ])
+        OptString.new('PAYLOADFILE', [ false, 'The file to read the payload from' ]),
+        OptString.new('PAYLOADSTR', [ false, 'The string to use as a payload' ])
+      ]
+    )
   end
 
   #
   # Construct the payload
   #
-  def generate
+  def generate(_opts = {})
     if datastore['ARCH']
       self.arch = actual_arch
     end
@@ -43,7 +46,7 @@ module MetasploitModule
     if datastore['PAYLOADSTR']
       datastore['PAYLOADSTR']
     elsif datastore['PAYLOADFILE']
-      IO.read(datastore['PAYLOADFILE'])
+      File.binread(datastore['PAYLOADFILE'])
     else
       ''
     end

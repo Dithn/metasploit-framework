@@ -56,8 +56,12 @@ module Scriptable
   #
   def legacy_script_to_post_module(script_name)
     {
+      'arp_scanner' => 'post/windows/gather/arp_scanner',
       'autoroute' => 'post/multi/manage/autoroute',
       'checkvm' => 'post/windows/gather/checkvm',
+      'credcollect' => 'post/windows/gather/credentials/credential_collector',
+      'domain_list_gen' => 'post/windows/gather/enum_domain_group_users',
+      'dumplinks' => 'post/windows/gather/dumplinks',
       'duplicate' => 'post/windows/manage/multi_meterpreter_inject',
       'enum_chrome' => 'post/windows/gather/enum_chrome',
       'enum_firefox' => 'post/windows/gather/enum_firefox',
@@ -69,6 +73,7 @@ module Scriptable
       'get_application_list' => 'post/windows/gather/enum_applications',
       'get_env' => 'post/multi/gather/env',
       'get_filezilla_creds' => 'post/windows/gather/credentials/filezilla_server',
+      'get_pidgin_creds' => 'post/multi/gather/pidgin_cred',
       'get_local_subnets' => 'post/multi/manage/autoroute',
       'get_valid_community' => 'post/windows/gather/enum_snmp',
       'getcountermeasure' => 'post/windows/manage/killav',
@@ -80,6 +85,7 @@ module Scriptable
       'killav' => 'post/windows/manage/killav',
       'metsvc' => 'exploit/windows/local/persistence',
       'migrate' => 'post/windows/manage/migrate',
+      'panda_2007_pavsrv51' => 'exploit/windows/local/service_permissions',
       'pml_driver_config' => 'exploit/windows/local/service_permissions',
       'packetrecorder' => 'post/windows/manage/rpcapd_start',
       'persistence' => 'exploit/windows/local/persistence',
@@ -90,6 +96,8 @@ module Scriptable
       'screenspy' => 'post/windows/gather/screen_spy',
       'search_dwld' => 'post/windows/gather/enum_files',
       'service_permissions_escalate' => 'exploits/windows/local/service_permissions',
+      'sound_recorder' => 'post/multi/manage/record_mic',
+      'srt_webdrive_priv' => 'exploit/windows/local/service_permissions',
       'uploadexec' => 'post/windows/manage/download_exec',
       'webcam' => 'post/windows/manage/webcam',
       'wmic' => 'post/windows/gather/wmic_command',
@@ -121,7 +129,7 @@ module Scriptable
         opts[k.downcase] = v
       end
       if mod.type == "post"
-        mod.run_simple(
+        mod.run_simple({
           # Run with whatever the default stance is for now.  At some
           # point in the future, we'll probably want a way to force a
           # module to run in the background
@@ -129,7 +137,7 @@ module Scriptable
           'LocalInput'  => self.user_input,
           'LocalOutput' => self.user_output,
           'Options'     => opts
-        )
+        })
       elsif mod.type == "exploit"
         # well it must be a local, we're not currently supporting anything else
         if mod.exploit_type == "local"
@@ -152,13 +160,13 @@ module Scriptable
           # session
           local_exploit_opts = local_exploit_opts.merge(opts)
 
-          mod.exploit_simple(
+          mod.exploit_simple({
             'Payload'       => local_exploit_opts.delete('payload'),
             'Target'        => local_exploit_opts.delete('target'),
             'LocalInput'    => self.user_input,
             'LocalOutput'   => self.user_output,
             'Options'       => local_exploit_opts
-            )
+            })
 
         end # end if local
       end # end if exploit
@@ -175,6 +183,7 @@ module Scriptable
         execute_file(full_path, args)
         framework.events.on_session_script_run(self, full_path)
       rescue StandardError => e
+        elog("Could not execute #{script_name}: #{e.class} #{e}", error: e)
         print_error("Could not execute #{script_name}: #{e.class} #{e}")
       end
     end

@@ -11,32 +11,39 @@ class MetasploitModule < Msf::Auxiliary
     super(
       update_info(
         info,
-        'Name'          => 'Test SSH Github Access',
-        'Description'   => %q(
+        'Name' => 'Test SSH Github Access',
+        'Description' => %q{
           This module will attempt to test remote Git access using
           (.ssh/id_* private keys). This works against GitHub and
           GitLab by default, but can easily be extended to support
           more server types.
-        ),
-        'License'       => MSF_LICENSE,
-        'Author'        => ['Wyatt Dahlenburg (@wdahlenb)'],
-        'Platform'      => ['linux'],
-        'SessionTypes'  => ['shell', 'meterpreter'],
-        'References'    => [['URL', 'https://help.github.com/en/articles/testing-your-ssh-connection']]
+        },
+        'License' => MSF_LICENSE,
+        'Author' => ['Wyatt Dahlenburg (@wdahlenb)'],
+        'Platform' => ['linux'],
+        'SessionTypes' => ['shell', 'meterpreter'],
+        'References' => [
+          ['URL', 'https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection'],
+          ['ATT&CK', Mitre::Attack::Technique::T1021_004_SSH]
+        ],
+        'Notes' => {
+          'Reliability' => UNKNOWN_RELIABILITY,
+          'Stability' => UNKNOWN_STABILITY,
+          'SideEffects' => UNKNOWN_SIDE_EFFECTS
+        }
       )
     )
 
     register_options(
       [
         OptPath.new('KEY_FILE', [false, 'Filename of a private key.', nil]),
-        OptPath.new('KEY_DIR', [false, 'Directory of several keys. Filenames will be recursivley found matching id_* (Ex: /home/user/.ssh)', nil]),
+        OptPath.new('KEY_DIR', [false, 'Directory of several keys. Filenames will be recursively found matching id_* (Ex: /home/user/.ssh)', nil]),
         OptString.new('GITSERVER', [true, 'Parameter to specify alternate Git Server (GitHub, GitLab, etc)', 'github.com'])
       ]
     )
     deregister_options(
       'RHOST', 'RHOSTS', 'PASSWORD', 'PASS_FILE', 'BLANK_PASSWORDS', 'USER_AS_PASS', 'USERPASS_FILE', 'DB_ALL_PASS', 'DB_ALL_CREDS'
     )
-
   end
 
   # OPTPath will revert to pwd when set back to ""

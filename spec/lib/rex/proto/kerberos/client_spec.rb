@@ -22,8 +22,17 @@ RSpec.describe Rex::Proto::Kerberos::Client do
     end
   end
 
+  let(:rhost) { '127.0.0.1' }
+  let(:rport) { 88 }
+  let(:subscriber) { instance_double(Rex::Proto::Kerberos::KerberosSubscriber, on_request: nil, on_response: nil) }
+
   subject(:client) do
-    described_class.new
+    opts = {
+      host: rhost,
+      port: rport,
+      subscriber: subscriber
+    }
+    described_class.new(opts)
   end
 
   let(:sample_asn1_request) do
@@ -112,7 +121,42 @@ RSpec.describe Rex::Proto::Kerberos::Client do
     context "when TCP connection" do
       it "returns the written data length" do
         request = Rex::Proto::Kerberos::Model::KdcRequest.decode(sample_asn1_request)
+        expect(subscriber).to receive(:on_request).with(request)
         expect(subject.send_request(request)).to eq(req_length)
+      end
+    end
+  end
+
+  describe '#connect' do
+    context 'when no host is specified' do
+
+      subject do
+        opts = {
+          port: rport,
+        }
+        described_class.new(opts)
+      end
+
+      it 'should raise an argument error' do
+        expect { subject.connect }.to raise_error(::ArgumentError)
+      end
+    end
+
+    context 'when no port is specified' do
+      subject do
+        opts = {
+          host: rhost,
+        }
+        described_class.new(opts)
+      end
+      it 'should raise an argument error' do
+        expect { subject.connect }.not_to raise_error
+      end
+    end
+
+    context 'when host and port are specified' do
+      it 'should not raise an error' do
+        expect { subject.connect }.not_to raise_error
       end
     end
   end
@@ -130,6 +174,7 @@ RSpec.describe Rex::Proto::Kerberos::Client do
           subject.connect
           subject.connection.write(res_error)
           subject.connection.seek(0)
+          expect(subscriber).to receive(:on_response).with(instance_of(Rex::Proto::Kerberos::Model::KrbError))
           expect(subject.recv_response).to be_a(Rex::Proto::Kerberos::Model::KrbError)
         end
       end
@@ -139,19 +184,19 @@ RSpec.describe Rex::Proto::Kerberos::Client do
           subject.connect
           subject.connection.write(res_valid)
           subject.connection.seek(0)
+          expect(subscriber).to receive(:on_response).with(instance_of(Rex::Proto::Kerberos::Model::KdcResponse))
           expect(subject.recv_response).to be_a(Rex::Proto::Kerberos::Model::KdcResponse)
         end
       end
 
       context "when reads unexpected data" do
-        it "raises RuntimeError" do
+        it "raises an error" do
           subject.connect
           subject.connection.write(res_invalid)
           subject.connection.seek(0)
-          expect { subject.recv_response }.to raise_error(::RuntimeError)
+          expect { subject.recv_response }.to raise_error(::EOFError)
         end
       end
     end
   end
 end
-

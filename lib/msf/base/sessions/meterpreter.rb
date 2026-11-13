@@ -73,6 +73,11 @@ class Meterpreter < Rex::Post::Meterpreter::Client
       opts[:ssl_cert] = opts[:datastore]['HandlerSSLCert']
     end
 
+    # Extract the MeterpreterDebugBuild option if specified by the user
+    if opts[:datastore]
+      opts[:debug_build] = opts[:datastore]['MeterpreterDebugBuild']
+    end
+
     # Don't pass the datastore into the init_meterpreter method
     opts.delete(:datastore)
 
@@ -90,6 +95,15 @@ class Meterpreter < Rex::Post::Meterpreter::Client
     self.console = Rex::Post::Meterpreter::Ui::Console.new(self)
   end
 
+  def exit
+    begin
+      self.core.shutdown
+    rescue StandardError
+      nil
+    end
+    self.shutdown_passive_dispatcher
+    self.console.stop
+  end
   #
   # Returns the session type as being 'meterpreter'.
   #
@@ -102,6 +116,10 @@ class Meterpreter < Rex::Post::Meterpreter::Client
   #
   def type
     self.class.type
+  end
+
+  def self.can_cleanup_files
+    true
   end
 
   ##
@@ -119,6 +137,28 @@ class Meterpreter < Rex::Post::Meterpreter::Client
 
   end
 
+  def load_embedded_extensions(datastore)
+    # Rex::Post::Meterpreter::ExtensionMapper.get_extension_klasses
+
+    # First of all, let's see if we have stdapi.
+    commands = self.core.get_loaded_extension_commands('stdapi')
+    console.run_single("load stdapi") if commands.length > 0
+
+    return if self.platform != 'windows'
+    return if datastore['EXTENSIONS'].nil? || datastore['EXTENSIONS'].empty?
+
+    exts = Set.new
+    exts.merge(binary_suffix.map { |suffix| MetasploitPayloads.list_meterpreter_extensions(suffix) }.flatten)
+    exts = exts.sort.uniq
+
+    exts.each { |e| 
+      commands = self.core.get_loaded_extension_commands(e.downcase)
+      if commands.length > 0 && !e.downcase.starts_with?('stdapi')
+        console.run_single("load #{e.downcase}")
+      end
+    }
+  end
+
   def bootstrap(datastore = {}, handler = nil)
     session = self
 
@@ -126,6 +166,8 @@ class Meterpreter < Rex::Post::Meterpreter::Client
     session.encode_unicode = datastore['EnableUnicodeEncoding']
 
     session.init_ui(self.user_input, self.user_output)
+
+    initialize_tlv_logging(datastore['SessionTlvLogging']) unless datastore['SessionTlvLogging'].nil?
 
     verification_timeout = datastore['AutoVerifySessionTimeout']&.to_i || session.comm_timeout
     begin
@@ -146,7 +188,7 @@ class Meterpreter < Rex::Post::Meterpreter::Client
     # always make sure that the new session has a new guid if it's not already known
     guid = session.session_guid
     if guid == "\x00" * 16
-      guid = [SecureRandom.uuid.gsub(/-/, '')].pack('H*')
+      guid = [SecureRandom.uuid.gsub('-', '')].pack('H*')
       session.core.set_session_guid(guid)
       session.session_guid = guid
       # TODO: New stageless session, do some account in the DB so we can track it later.
@@ -155,33 +197,45 @@ class Meterpreter < Rex::Post::Meterpreter::Client
     end
 
     session.commands.concat(session.core.get_loaded_extension_commands('core'))
-
-    # Unhook the process prior to loading stdapi to reduce logging/inspection by any AV/PSP
-    if datastore['AutoUnhookProcess'] == true
-      console.run_single('load unhook')
-      console.run_single('unhook_pe')
+    if session.tlv_enc_key[:weak_key?]
+      print_warning("Meterpreter session #{session.sid} is using a weak encryption key.")
+      print_warning('Meterpreter start up operations have been aborted. Use the session at your own risk.')
+      return nil
     end
 
-    unless datastore['AutoLoadStdapi'] == false
+    original = console.disable_output
+    console.disable_output = true
 
-      session.load_stdapi
+    load_embedded_extensions(datastore)
 
-      unless datastore['AutoSystemInfo'] == false
-        session.load_session_info
-      end
-
-      # only load priv on native windows
-      # TODO: abstract this too, to remove windows stuff
-      if session.platform == 'windows' && [ARCH_X86, ARCH_X64].include?(session.arch)
-        session.load_priv rescue nil
-      end
+    extensions = datastore['AutoLoadExtensions']
+    if extensions.is_a?(String)
+      extensions = extensions.split(',')
     end
+    extensions = Array(extensions).map(&:strip).reject(&:empty?)
 
+    # BEGIN: This should be removed on MSF 7
+    # Unhook the process prior to loading stdapi to reduce logging/inspection by any AV/PSP (by default unhook is first, see meterpreter_options/windows.rb)
+    # The unhook extension is broken. reference: https://github.com/rapid7/metasploit-framework/pull/20514
+
+    #extensions.push('unhook') if datastore['AutoUnhookProcess'] && session.platform == 'windows'
+    extensions.push('stdapi') if datastore['AutoLoadStdapi']
+    extensions.push('priv') if datastore['AutoLoadStdapi'] && session.platform == 'windows'
+    extensions.push('android') if session.platform == 'android'
+    extensions = extensions.uniq
+    # END
     # TODO: abstract this a little, perhaps a "post load" function that removes
     # platform-specific stuff?
-    if session.platform == 'android'
-      session.load_android
+    extensions.each do |extension|
+      begin
+        console.run_single("load #{extension}")
+        # console.run_single('unhook_pe') if extension == 'unhook'
+        session.load_session_info if extension == 'stdapi' && datastore['AutoSystemInfo']
+      rescue => e
+        print_warning("Failed loading extension #{extension}")
+      end
     end
+    console.disable_output = original
 
     ['InitialAutoRunScript', 'AutoRunScript'].each do |key|
       unless datastore[key].nil? || datastore[key].empty?
@@ -248,11 +302,10 @@ class Meterpreter < Rex::Post::Meterpreter::Client
     @shell = nil
   end
 
-  def shell_command(cmd)
+  def shell_command(cmd, timeout = 5)
     # Send the shell channel's stdin.
     shell_write(cmd + "\n")
 
-    timeout = 5
     etime = ::Time.now.to_f + timeout
     buff = ""
 
@@ -318,18 +371,18 @@ class Meterpreter < Rex::Post::Meterpreter::Client
   # Initializes the console's I/O handles.
   #
   def init_ui(input, output)
-    self.user_input = input
-    self.user_output = output
+    super
+
     console.init_ui(input, output)
     console.set_log_source(log_source)
-
-    super
   end
 
   ##
   # :category: Msf::Session::Interactive implementors
   #
   # Resets the console's I/O handles.
+  # Does not call super - the session preserves its own user_input/user_output
+  # while only resetting the console's I/O.
   #
   def reset_ui
     console.unset_log_source
@@ -402,7 +455,11 @@ class Meterpreter < Rex::Post::Meterpreter::Client
 
   def update_session_info
     # sys.config.getuid, and fs.dir.getwd cache their results, so update them
-    fs.dir.getwd
+    begin
+      fs&.dir&.getwd
+    rescue Rex::Post::Meterpreter::RequestError => e
+      elog('failed retrieving working directory', error: e)
+    end
     username = self.sys.config.getuid
     sysinfo  = self.sys.config.sysinfo
 
@@ -583,6 +640,10 @@ class Meterpreter < Rex::Post::Meterpreter::Client
     sock
   end
 
+  def supports_udp?
+    true
+  end
+
   #
   # Get a string representation of the current session platform
   #
@@ -732,4 +793,3 @@ end
 
 end
 end
-

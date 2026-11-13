@@ -35,17 +35,17 @@ module Msf
     end
 
     # @return [OptString]
-    def self.Proxies(default=nil, required=false, desc="A proxy chain of format type:host:port[,type:host:port][...]")
-      Msf::OptString.new(__method__.to_s, [ required, desc, default ])
+    def self.Proxies(default=nil, required=false, desc="A proxy chain of format type:host:port[,type:host:port][...]. Supported proxies: #{Rex::Socket::Proxies.supported_types.join(', ')}")
+      Msf::OptProxies.new(__method__.to_s, [ required, desc, default ])
     end
 
-    # @return [OptAddressRange]
-    def self.RHOSTS(default=nil, required=true, desc="The target host(s), range CIDR identifier, or hosts file with syntax 'file:<path>'")
-      Msf::OptAddressRange.new('RHOSTS', [ required, desc, default ], aliases: [ 'RHOST' ])
+    # @return [OptRhosts]
+    def self.RHOSTS(default= nil, required=true, desc="The target host(s), see https://docs.metasploit.com/docs/using-metasploit/basics/using-metasploit.html")
+      Msf::OptRhosts.new('RHOSTS', [ required, desc, default ], aliases: [ 'RHOST' ])
     end
 
-    def self.RHOST(default=nil, required=true, desc="The target host(s), range CIDR identifier, or hosts file with syntax 'file:<path>'")
-      Msf::OptAddressRange.new('RHOSTS', [ required, desc, default ], aliases: [ 'RHOST' ])
+    def self.RHOST(default=nil, required=true, desc="The target host(s), see https://docs.metasploit.com/docs/using-metasploit/basics/using-metasploit.html")
+      Msf::OptRhosts.new('RHOSTS', [ required, desc, default ], aliases: [ 'RHOST' ])
     end
 
     # @return [OptPort]
@@ -85,11 +85,9 @@ module Msf
         ),
         OptString.new('HttpProxyUser', 'An optional proxy server username',
           aliases: ['PayloadProxyUser'],
-          max_length: Rex::Payloads::Meterpreter::Config::PROXY_USER_SIZE - 1
         ),
         OptString.new('HttpProxyPass', 'An optional proxy server password',
           aliases: ['PayloadProxyPass'],
-          max_length: Rex::Payloads::Meterpreter::Config::PROXY_PASS_SIZE - 1
         ),
         OptEnum.new('HttpProxyType', 'The type of HTTP proxy',
           enums: ['HTTP', 'SOCKS'],

@@ -16,6 +16,12 @@ module Msf::ReflectiveDLLLoader
   # In new RDI DLLs that come with MSF
   EXPORT_REFLECTIVELOADER = 1
 
+  # Minimum plausible size, in bytes, for a site-local custom reflective
+  # loader. This is only a sanity floor to catch obviously-broken input
+  # (empty files, truncated downloads, the wrong file entirely) -- it is
+  # not, and cannot be, a correctness check of the shellcode itself.
+  MIN_CUSTOM_LOADER_SIZE = 64
+
   # Load a reflectively-injectable DLL from disk and find the offset
   # to the ReflectiveLoader function inside the DLL.
   #
@@ -24,8 +30,8 @@ module Msf::ReflectiveDLLLoader
   # @return [Array] Tuple of DLL contents and offset to the
   #                 +ReflectiveLoader+ function within the DLL.
   def load_rdi_dll(dll_path, loader_name: 'ReflectiveLoader', loader_ordinal: EXPORT_REFLECTIVELOADER)
-    dll = ''
-    ::File.open(dll_path, 'rb') { |f| dll = f.read }
+    encrypted_dll = ::File.binread(dll_path)
+    dll = ::MetasploitPayloads::Crypto.decrypt(ciphertext: encrypted_dll)
 
     offset = parse_pe(dll, loader_name: loader_name, loader_ordinal: loader_ordinal)
 
@@ -43,7 +49,8 @@ module Msf::ReflectiveDLLLoader
   #
   # @return [Integer] offset to the +ReflectiveLoader+ function within the DLL.
   def load_rdi_dll_from_data(dll_data, loader_name: 'ReflectiveLoader', loader_ordinal: EXPORT_REFLECTIVELOADER)
-    offset = parse_pe(dll_data, loader_name: loader_name, loader_ordinal: loader_ordinal)
+    decrypted_dll_data = ::MetasploitPayloads::Crypto.decrypt(ciphertext: dll_data)
+    offset = parse_pe(decrypted_dll_data, loader_name: loader_name, loader_ordinal: loader_ordinal)
 
     unless offset
       raise 'Cannot find the ReflectiveLoader entry point in DLL data'
@@ -53,6 +60,23 @@ module Msf::ReflectiveDLLLoader
   end
 
   private
+
+  # Sanity-check a site-local custom loader's bytes before splicing them
+  # onto the end of the DLL and jumping into them. A custom loader is raw
+  # shellcode, not a parseable format, so this can only catch grossly
+  # malformed input (missing, empty, or implausibly small); it cannot
+  # verify the shellcode actually implements a working ReflectiveLoader.
+  #
+  # @param [String, nil] loader Raw bytes read from the custom loader file.
+  # @param [String] path Path the loader was read from, for the error message.
+  # @raise [RuntimeError] if the loader is missing, empty, or implausibly small.
+  def validate_custom_loader!(loader, path)
+    size = loader.to_s.length
+    if size < MIN_CUSTOM_LOADER_SIZE
+      raise "Custom loader at #{path} is only #{size} bytes (minimum #{MIN_CUSTOM_LOADER_SIZE}); " \
+            'it does not look like a valid reflective loader. Refusing to use it.'
+    end
+  end
 
   def parse_pe(dll, loader_name: 'ReflectiveLoader', loader_ordinal: EXPORT_REFLECTIVELOADER)
     pe = Rex::PeParsey::Pe.new(Rex::ImageSource::Memory.new(dll))
@@ -71,7 +95,7 @@ module Msf::ReflectiveDLLLoader
     # fallback to the known ordinal export for RDI DLLs?
     if offset.nil? && !loader_ordinal.nil?
       e = pe.exports.entries.find {|e| e.ordinal == loader_ordinal}
-      offset = pe.rva_to_file_offset(e.rva)
+      offset = pe.rva_to_file_offset(e.rva) if e
     end
 
     offset

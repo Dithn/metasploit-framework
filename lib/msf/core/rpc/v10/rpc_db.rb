@@ -168,7 +168,7 @@ public
   #  * 'private_type' [String] Password type.
   #  * 'realm_value' [String] Realm.
   #  * 'realm_key' [String] Realm key.
-  #  * 'host' [String] Host (Only avilable if there's a :last_attempted_at and :status)
+  #  * 'host' [String] Host (Only available if there's a :last_attempted_at and :status)
   #  * 'sname' [String] Service name (only available if there's a :last_attempted_at and :status)
   #  * 'status' [Status] Login status (only available if there's a :last_attempted_at and :status)
   # @see https://github.com/rapid7/metasploit-credential/blob/master/lib/metasploit/credential/creation.rb#L107 #create_credential Documentation.
@@ -252,6 +252,8 @@ public
   #    * 'port' [Integer] Port.
   #    * 'proto' [String] Protocol.
   #    * 'sname' [String] Service name.
+  #    * 'realm_key' [String] Realm key type.
+  #    * 'realm_value' [String] Realm value.
   # @example Here's how you would use this from the client:
   #  rpc.call('db.creds', {})
   def rpc_creds(xopts)
@@ -298,7 +300,9 @@ public
           :host => host,
           :port => port,
           :proto => proto,
-          :sname => sname
+          :sname => sname,
+          :realm_key => cred.realm.try(:key),
+          :realm_value => cred.realm.try(:value)
         }
       end
       ret
@@ -371,6 +375,10 @@ public
   #
   # @param [Hash] xopts Options:
   # @option xopts [String] :workspace Name of the workspace.
+  # @option xopts [String, Array<String>] :addresses Address or CIDR range to filter by; may be an array of either.
+  # @option xopts [Boolean] :only_up If true, return hosts that are up.
+  # @option xopts [Integer] :limit Maximum number of hosts to return.
+  # @option xopts [Integer] :offset return the hosts starting at index `offset`.
   # @raise [Msf::RPC::ServerException] You might get one of these errors:
   #  * 500 ActiveRecord::ConnectionNotEstablished. Try: rpc.call('console.create').
   #  * 500 Database not loaded. Try: rpc.call('console.create')
@@ -389,6 +397,7 @@ public
   #    * 'updated_at' [Integer] Last updated at.
   #    * 'purpose' [String] Host purpose (example: server)
   #    * 'info' [String] Additional information about the host.
+  #    * 'comments' [String] The host's comments.
   # @example Here's how you would use this from the client:
   #  rpc.call('db.hosts', {})
   def rpc_hosts(xopts)
@@ -397,33 +406,60 @@ public
 
     conditions = {}
     conditions[:state] = [Msf::HostState::Alive, Msf::HostState::Unknown] if opts[:only_up]
-    conditions[:address] = opts[:addresses] if opts[:addresses]
 
-    limit = opts.delete(:limit) || 100
+    cidr_addrs = exact_addrs = []
+    if opts[:addresses]
+      addresses = Array(opts[:addresses])
+      cidr_addrs, exact_addrs = addresses.partition { |a| a.to_s.include?('/') }
+      cidr_addrs.map! { |c| IPAddr.new(c).cidr }
+    end
+
+    limit  = opts.delete(:limit)  || 100
     offset = opts.delete(:offset) || 0
 
     ret = {}
     ret[:hosts] = []
-    wspace.hosts.where(conditions).offset(offset).order(:address).limit(limit).each do |h|
+
+    host_query = wspace.hosts.where(conditions)
+    if exact_addrs.any? || cidr_addrs.any?
+      address_filter_sql = []
+      bind_values = []
+
+      if exact_addrs.any?
+        address_filter_sql << 'hosts.address IN (?)'
+        bind_values << exact_addrs
+      end
+
+      if cidr_addrs.any?
+        address_filter_sql << cidr_addrs.map { 'hosts.address <<= ?::cidr' }.join(' OR ')
+        bind_values.concat(cidr_addrs)
+      end
+
+      host_query = host_query.where(["(#{address_filter_sql.join(') OR (')})", *bind_values])
+    end
+
+    hosts = host_query.order(:address).offset(offset).limit(limit)
+
+    hosts.each do |h|
       host = {}
       host[:created_at] = h.created_at.to_i
-      host[:address] = h.address.to_s
-      host[:mac] = h.mac.to_s
-      host[:name] = h.name.to_s
-      host[:state] = h.state.to_s
-      host[:os_name] = h.os_name.to_s
-      host[:os_flavor] = h.os_flavor.to_s
-      host[:os_sp] = h.os_sp.to_s
-      host[:os_lang] = h.os_lang.to_s
+      host[:address]    = h.address.to_s
+      host[:mac]        = h.mac.to_s
+      host[:name]       = h.name.to_s
+      host[:state]      = h.state.to_s
+      host[:os_name]    = h.os_name.to_s
+      host[:os_flavor]  = h.os_flavor.to_s
+      host[:os_sp]      = h.os_sp.to_s
+      host[:os_lang]    = h.os_lang.to_s
       host[:updated_at] = h.updated_at.to_i
-      host[:purpose] = h.purpose.to_s
-      host[:info] = h.info.to_s
-      ret[:hosts]  << host
+      host[:purpose]    = h.purpose.to_s
+      host[:info]       = h.info.to_s
+      host[:comments]   = h.comments.to_s
+      ret[:hosts] << host
     end
     ret
   }
   end
-
 
   # Returns information about services.
   #
@@ -432,7 +468,7 @@ public
   # @option xopts [Integer] :limit Limit.
   # @option xopts [Integer] :offset Offset.
   # @option xopts [String] :proto Protocol.
-  # @option xopts [String] :address Address.
+  # @option xopts [String] :address Host address.
   # @option xopts [String] :ports Port range.
   # @option xopts [String] :names Names (Use ',' as the separator).
   # @raise [Msf::RPC::ServerException] You might get one of these errors:
@@ -449,6 +485,8 @@ public
   #    * 'state' [String] Service state.
   #    * 'name' [String] Service name.
   #    * 'info' [String] Additional information about the service.
+  #    * 'resource' [Hash] Service resource.
+  #    * 'parents' [Array<Hash>] List of parent services with same set of keys as the service.
   # @example Here's how you would use this from the client:
   #  rpc.call('db.services', {})
   def rpc_services( xopts)
@@ -467,18 +505,8 @@ public
     ret = {}
     ret[:services] = []
 
-    wspace.services.includes(:host).where(conditions).offset(offset).limit(limit).each do |s|
-      service = {}
-      host = s.host
-      service[:host] = host.address || "unknown"
-      service[:created_at] = s[:created_at].to_i
-      service[:updated_at] = s[:updated_at].to_i
-      service[:port] = s[:port]
-      service[:proto] = s[:proto].to_s
-      service[:state] = s[:state].to_s
-      service[:name] = s[:name].to_s
-      service[:info] = s[:info].to_s
-      ret[:services] << service
+    wspace.services.includes(:host, :parents).where(conditions).offset(offset).limit(limit).each do |s|
+      ret[:services] << process_service(s)
     end
     ret
   }
@@ -494,6 +522,7 @@ public
   # @option xopts [String] :proto Protocol.
   # @option xopts [String] :address Address.
   # @option xopts [String] :ports Port range.
+  # @option xopts [String] :names Exploit that was used.
   # @raise [Msf::RPC::ServerException] You might get one of these errors:
   #  * 500 ActiveRecord::ConnectionNotEstablished. Try: rpc.call('console.create').
   #  * 500 Database not loaded. Try: rpc.call('console.create')
@@ -506,6 +535,7 @@ public
   #    * 'host' [String] Vulnerable host.
   #    * 'name' [String] Exploit that was used.
   #    * 'refs' [String] Vulnerability references.
+  #    * 'resource' [String] Vulnerability resource.
   # @example Here's how you would use this from the client:
   #  rpc.call('db.vulns', {})
   def rpc_vulns(xopts)
@@ -517,7 +547,7 @@ public
     conditions = {}
     conditions["hosts.address"] = opts[:address] if opts[:address]
     conditions[:name] = opts[:names].strip().split(",") if opts[:names]
-    conditions["services.port"] = Rex::Socket.portspec_to_portlist(opts[:ports]) if opts[:port]
+    conditions["services.port"] = Rex::Socket.portspec_to_portlist(opts[:ports]) if opts[:ports]
     conditions["services.proto"] = opts[:proto] if opts[:proto]
 
     ret = {}
@@ -536,6 +566,7 @@ public
       vuln[:host] = v.host.address || nil
       vuln[:name] = v.name
       vuln[:refs] = reflist.join(',')
+      vuln[:resource] = v.resource
       ret[:vulns] << vuln
     end
     ret
@@ -757,7 +788,8 @@ public
   # @option xopts [String] :addr Host address.
   # @option xopts [String] :address Same as :addr.
   # @option xopts [String] :host Same as :address.
-  # @option xopts [Array<String>]  :payloads  All returned modules will support this payload
+  # @option xopts [Map<String, Object>]  :analyze_options  All returned modules will support these options
+  # * [Array<String>] :payloads Modules returned will be compatible with at least one payload
   # @raise [Msf::RPC::ServerException] You might get one of these errors:
   #  * 500 ActiveRecord::ConnectionNotEstablished. Try: rpc.call('console.create').
   #  * 500 Database not loaded. Try: rpc.call('console.create')
@@ -774,15 +806,19 @@ def rpc_analyze_host(xopts)
   ::ApplicationRecord.connection_pool.with_connection {
     _opts, _wspace = init_db_opts_workspace(xopts)
     ret = {
-      host: []
+      host: {}
     }
     opts = fix_options(xopts)
+    opts.deep_symbolize_keys!
     host = self.framework.db.get_host(opts)
+    # consider expanding to support a list of hosts?
     return ret unless host
 
+    # as a consumer options should be a filter object not a top level param
     analyze_options = {}
-    analyze_options[:payloads] = opts[:payloads] if opts[:payloads]
+    analyze_options = opts[:analyze_options] if opts[:analyze_options]
     analyze_result = self.framework.analyze.host(host, **analyze_options)
+    # this should just serialize the result as hosts details why did it end up limited?
     module_suggestions = analyze_result[:results].sort_by { |result| result.mod.fullname }
     host_detail = {
       address: host.address,
@@ -791,10 +827,16 @@ def rpc_analyze_host(xopts)
         {
           mtype: mod.type,
           mname: mod.fullname,
+          state: result.state,
+          description: result.description,
+          options: {
+            invalid: result.invalid,
+            missing: result.missing
+          }
         }
       end
     }
-    ret[:host] << host_detail
+    ret[:host] = host_detail
     ret
   }
 end
@@ -1065,7 +1107,7 @@ end
   # @option xopts [String] :proto Along with +:host+ and +:port+, a service to associate with this note.
   # @option xopts [Hash] A hash that contains the following information.
   #  * :unique [Boolean] Allow only a single Note per +:host+/+:type+ pair.
-  #  * :unique_data [Boolean] Like +:uniqe+, but also compare +:data+.
+  #  * :unique_data [Boolean] Like +:unique+, but also compare +:data+.
   #  * :insert [Boolean] Always insert a new Note even if one with identical values exists.
   # @raise [Msf::RPC::ServerException] You might get one of these errors:
   #  * 500 ActiveRecord::ConnectionNotEstablished. Try: rpc.call('console.create').
@@ -1102,7 +1144,6 @@ end
   # @param [Hash] xopts Filters for the search. See below:
   # @option xopts [String] :workspace Name of the workspace.
   # @option xopts [String] :address Host address.
-  # @option xopts [String] :names Names (separated by ',').
   # @option xopts [String] :ntype Note type.
   # @option xopts [String] :proto Protocol.
   # @option xopts [String] :ports Port change.
@@ -1115,8 +1156,8 @@ end
   #    * 'time' [Integer] Creation date.
   #    * 'host' [String] Host address.
   #    * 'service' [String] Service name or port.
-  #    * 'type' [String] Host type.
-  #    * 'data' [String] Host data.
+  #    * 'type' [String] Note type.
+  #    * 'data' [Hash, String, nil] Note data.
   # @example Here's how you would use this from the client:
   #  # This gives you all the notes.
   #  rpc.call('db.notes', {})
@@ -1128,7 +1169,6 @@ end
 
     conditions = {}
     conditions["hosts.address"] = opts[:address] if opts[:address]
-    conditions[:name] = opts[:names].strip().split(",") if opts[:names]
     conditions[:ntype] = opts[:ntype] if opts[:ntype]
     conditions["services.port"] = Rex::Socket.portspec_to_portlist(opts[:ports]) if opts[:ports]
     conditions["services.proto"] = opts[:proto] if opts[:proto]
@@ -1143,7 +1183,7 @@ end
       note[:host] = n.host.address if n.host
       note[:service] = n.service.name || n.service.port  if n.service
       note[:type ] = n.ntype.to_s
-      note[:data] = n.data.inspect
+      note[:data] = n.data
       ret[:notes] << note
     end
     ret
@@ -1862,7 +1902,7 @@ end
   # @option [String] :driver Driver name. For example: 'postgresql'. If this option is not set,
   #                  then the method returns the current one.
   # @return [Hash] A hash that contains:
-  #  * 'result' [String] Indiciating whether we've successfully set the driver or not.
+  #  * 'result' [String] Indicating whether we've successfully set the driver or not.
   #  * 'driver' [String] If the :driver option isn't set, then this returns the current one.
   # @example Here's how you would use this from the client:
   #  # Sets a driver
@@ -1973,6 +2013,35 @@ end
     end
   end
 
+
+  private
+
+  # Process an Mdm::Service object to a hash, with recursive parent lookup.
+  #
+  # @param mdm_service [Mdm::Service] The service record to process.
+  # @param recursion_depth [Integer] Current recursion iteration count
+  # @return [Hash] Serialized service data.
+  def process_service(mdm_service, recursion_depth = 0)
+    error(500, "Recursion limit reached when processing service parents for #{mdm_service.name}") unless recursion_depth >= 0 && recursion_depth <= 10
+
+    service = {}
+    host = mdm_service.host
+
+    service[:host] = host.address || "unknown"
+    service[:created_at] = mdm_service[:created_at].to_i
+    service[:updated_at] = mdm_service[:updated_at].to_i
+    service[:port] = mdm_service[:port]
+    service[:proto] = mdm_service[:proto].to_s
+    service[:state] = mdm_service[:state].to_s
+    service[:name] = mdm_service[:name].to_s
+    service[:info] = mdm_service[:info].to_s
+    service[:resource] = mdm_service[:resource]
+    service[:parents] = mdm_service.parents.map do |parent|
+      process_service(parent, recursion_depth + 1)
+    end
+
+    service
+  end
 
 end
 end

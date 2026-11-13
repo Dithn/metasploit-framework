@@ -23,14 +23,18 @@ class MetasploitModule < Msf::Auxiliary
         },
         'Author'	=> [ 'aushack' ],
         'License'	=> MSF_LICENSE,
-        'References'	=>
-          [
-            [ 'BID', '19680' ],
-            [ 'CVE', '2006-4313' ],
-            [ 'OSVDB', '28139' ],
-            [ 'OSVDB', '28138' ]
-          ],
-        'DisclosureDate' => '2006-08-23'
+        'References' => [
+          [ 'BID', '19680' ],
+          [ 'CVE', '2006-4313' ],
+          [ 'OSVDB', '28139' ],
+          [ 'OSVDB', '28138' ]
+        ],
+        'DisclosureDate' => '2006-08-23',
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'Reliability' => [],
+          'SideEffects' => [IOC_IN_LOGS, ARTIFACTS_ON_DISK]
+        }
       )
     )
 
@@ -44,7 +48,7 @@ class MetasploitModule < Msf::Auxiliary
   def run
     connect
     res = sock.get_once
-    if (res && res =~ /220 Session will be terminated after/)
+    if res && res =~ /220 Session will be terminated after/
       print_status('Target appears to be a Cisco VPN Concentrator 3000 series.')
 
       test = Rex::Text.rand_text_alphanumeric(8)

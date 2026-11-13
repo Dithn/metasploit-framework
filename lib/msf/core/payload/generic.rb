@@ -43,7 +43,7 @@ module Payload::Generic
   # the actual payload in case settings have changed.  Other methods will
   # use the cached version if possible.
   #
-  def generate
+  def generate(_opts = {})
     reset
 
     redirect_to_actual(:generate)
@@ -160,6 +160,31 @@ module Payload::Generic
   # is used for things like payload regeneration.
   #
   attr_accessor :explicit_arch
+
+  #
+  # Returns the architecture of the concrete payload that this generic payload
+  # resolves to, or nil if it cannot be determined yet. Unlike {#arch} (which
+  # advertises ARCH_ALL for compatibility matching), this reflects the payload
+  # that will actually be generated, so callers such as encoder selection can
+  # scope themselves to the right architecture.
+  #
+  # @return [Array, nil]
+  def resolved_arch
+    actual_arch
+  rescue NoCompatiblePayloadError
+    nil
+  end
+
+  #
+  # Returns the platform of the concrete payload that this generic payload
+  # resolves to, or nil if it cannot be determined yet.
+  #
+  # @return [Msf::Module::PlatformList, nil]
+  def resolved_platform
+    actual_platform
+  rescue NoCompatiblePayloadError
+    nil
+  end
 
 protected
 

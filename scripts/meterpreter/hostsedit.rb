@@ -7,7 +7,7 @@
 
 
 # Meterpreter script for modifying the hosts file in windows
-# given a single entrie or several in a file and clear the
+# given a single entry or several in a file and clear the
 # DNS cache on the target machine.
 # This script works with Windows 2000,Windows XP,Windows 2003,
 # Windows Vista and Windows 2008.
@@ -67,7 +67,7 @@ def backuphosts(session,hosts)
   random = sprintf("%.5d",rand(100000))
   print_status("Making Backup of the hosts file.")
   session.sys.process.execute("cmd /c copy #{hosts} #{hosts}#{random}.back",nil, {'Hidden' => true})
-  print_status("Backup loacated in #{hosts}#{random}.back")
+  print_status("Backup located in #{hosts}#{random}.back")
 end
 # Clear DNS Cached entries
 def cleardnscach(session)

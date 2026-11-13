@@ -17,14 +17,14 @@ class MetasploitModule < Msf::Auxiliary
         key value pairs.  Etcd by default does not utilize authentication.
       ),
       'References' => [
-        ['URL', 'https://elweb.co/the-security-footgun-in-etcd']
+        ['URL', 'https://gcollazo.com/the-security-footgun-in-etcd/']
       ],
       'Author' => [
         'Giovanni Collazo <hello@gcollazo.com>', # discovery
         'h00die' # msf module
       ],
       'License' => MSF_LICENSE,
-      'DisclosureDate' => "Mar 16 2018"
+      'DisclosureDate' => '2018-03-16'
     )
   end
 
@@ -34,7 +34,7 @@ class MetasploitModule < Msf::Auxiliary
     banner = fingerprint_service(target_uri.to_s)
     vprint_status("#{peer} - Collecting data through #{path}...")
     res = send_request_raw(
-      'uri'    => path,
+      'uri' => path,
       'method' => 'GET'
     )
 

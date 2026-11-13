@@ -4,11 +4,12 @@
 
 require 'metasploit/framework/command'
 require 'metasploit/framework/command/base'
+require 'rex/text'
 
 # Based on pattern used for lib/rails/commands in the railties gem.
 class Metasploit::Framework::Command::Console < Metasploit::Framework::Command::Base
 
-  # Provides an animated spinner in a seperate thread.
+  # Provides an animated spinner in a separate thread.
   #
   # See GitHub issue #4147, as this may be blocking some
   # Windows instances, which is why Windows platforms
@@ -43,13 +44,64 @@ class Metasploit::Framework::Command::Console < Metasploit::Framework::Command::
     case parsed_options.options.subcommand
     when :version
       $stderr.puts "Framework Version: #{Metasploit::Framework::VERSION}"
+    when :module_count
+      print_module_counts
     else
-      spinner unless parsed_options.options.console.quiet
+      unless parsed_options.options.console.quiet
+        colorizor = Struct.new(:supports_color?).new(false).extend(Rex::Text::Color)
+        $stdout.print colorizor.substitute_colors(Rex::Text.wordwrap("Metasploit tip: #{Msf::Ui::Tip.sample}\n", indent = 0, cols = 80))
+        spinner
+      end
+
       driver.run
     end
   end
 
   private
+
+  # Prints the module counts shown in the startup banner (exploits, auxiliary,
+  # payloads, post, encoders, nops, evasion) without starting the console.
+  #
+  # Mirrors the boot sequence of Msf::Ui::Console::Driver: when module files
+  # have changed since the metadata cache was built, the cache is rebuilt from
+  # the module files (exactly as a full console boot would do); otherwise the
+  # counts are read straight from the on-disk metadata store.
+  #
+  # @return [void]
+  def print_module_counts
+    # Defer module loading while the framework is created; whether modules
+    # must be loaded eagerly is decided below from the cache checksum.
+    framework = Msf::Simple::Framework.create('DeferModuleLoads' => true)
+
+    has_modified_module_files = !Msf::Modules::Metadata::Store.valid_checksum?
+    if has_modified_module_files
+      Msf::Modules::Metadata::Store.update_cache_checksum(Msf::Modules::Metadata::Store.get_current_checksum)
+      framework.init_module_paths(
+          module_paths: parsed_options.options.modules.path,
+          defer_module_loads: false
+      )
+      framework.modules.refresh_cache_from_module_files
+    else
+      framework.init_module_paths(
+          module_paths: parsed_options.options.modules.path,
+          defer_module_loads: true
+      )
+    end
+
+    stats = framework.stats
+    counts = {
+        'exploits'  => stats.num_exploits,
+        'auxiliary' => stats.num_auxiliary,
+        'payloads'  => stats.num_payloads,
+        'post'      => stats.num_post,
+        'encoders'  => stats.num_encoders,
+        'nops'      => stats.num_nops,
+        'evasion'   => stats.num_evasion
+    }
+    counts.each do |type, count|
+      $stdout.puts "#{type}: #{count.to_fs(:delimited)}"
+    end
+  end
 
   # The console UI driver.
   #
@@ -85,7 +137,7 @@ class Metasploit::Framework::Command::Console < Metasploit::Framework::Command::
       driver_options['Logger'] = options.console.logger
       driver_options['ModulePath'] = options.modules.path
       driver_options['Plugins'] = options.console.plugins
-      driver_options['RealReadline'] = options.console.real_readline
+      driver_options['Readline'] = options.console.readline
       driver_options['Resource'] = options.console.resources
       driver_options['XCommands'] = options.console.commands
 

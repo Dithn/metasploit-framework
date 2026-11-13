@@ -46,23 +46,26 @@ module Msf::Payload::Android
     opts[:uuid] ||= generate_payload_uuid
     ds = opts[:datastore] || datastore
 
+    # Session flags consumed by the Android meterpreter via TLV_TYPE_SESSION_FLAGS.
+    # Bit values must match Config.FLAG_* in
+    # java/meterpreter/shared/src/main/java/com/metasploit/stage/Config.java.
+    flags = 0
+    flags |= 1 if opts[:stageless]
+    flags |= 2 if ds['AndroidMeterpreterDebug']
+    flags |= 4 if ds['AndroidWakelock']
+    flags |= 8 if ds['AndroidHideAppIcon']
+
     config_opts = {
       ascii_str:  true,
       arch:       opts[:uuid].arch,
       expiration: ds['SessionExpirationTimeout'].to_i,
       uuid:       opts[:uuid],
       transports: opts[:transport_config] || [transport_config(opts)],
-      stageless:  opts[:stageless] == true
+      stageless:  opts[:stageless] == true,
+      flags:      flags
     }
 
-    config = Rex::Payloads::Meterpreter::Config.new(config_opts).to_b
-    flags = 0
-    flags |= 1 if opts[:stageless]
-    flags |= 2 if ds['AndroidMeterpreterDebug']
-    flags |= 4 if ds['AndroidWakelock']
-    flags |= 8 if ds['AndroidHideAppIcon']
-    config[0] = flags.chr
-    config
+    Rex::Payloads::Meterpreter::Config.new(config_opts).to_b
   end
 
   def sign_jar(jar)
@@ -103,7 +106,7 @@ module Msf::Payload::Android
     cert.not_after = Time.at(0x78045d81 + rand(0x7fffffff - 0x78045d81))
 
     # If this line is left out, signature verification fails on OSX.
-    cert.sign(key, OpenSSL::Digest::SHA1.new)
+    cert.sign(key, OpenSSL::Digest.new('SHA1'))
 
     jar.sign(key, cert, [cert])
   end
@@ -120,14 +123,21 @@ module Msf::Payload::Android
     end
 
     config += "\x00" * (8195 - config.size)
-    classes.gsub!("\xde\xad\xba\xad" + "\x00" * 8191, config)
+    # Binary configuration may contain bytes that resemble replacement backreferences.
+    classes.gsub!("\xde\xad\xba\xad" + "\x00" * 8191) { config }
 
     jar = Rex::Zip::Jar.new
     files = [
       [ "AndroidManifest.xml" ],
       [ "resources.arsc" ]
     ]
-    jar.add_files(files, MetasploitPayloads.path("android", "apk"))
+
+    files.each do |file|
+      path = ['android', 'apk', file].flatten.join('/')
+      contents = ::MetasploitPayloads.read(path)
+      jar.add_file(file.join('/'), contents)
+    end
+
     jar.add_file("classes.dex", fix_dex_header(classes))
     jar.build_manifest
 

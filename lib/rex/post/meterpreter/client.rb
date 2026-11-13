@@ -111,6 +111,34 @@ class Client
     end
 
     shutdown_passive_dispatcher
+
+    shutdown_tlv_logging
+  end
+
+  #
+  # Wrap the given packet data with any prefixes and suffixes that are stored in
+  # the associated C2 profile server configuration (if it exists) and handle
+  # encoding of data
+  #
+  def wrap_packet(raw_bytes)
+    if self.c2_profile
+      raw_bytes = self.c2_profile.wrap_outbound_get(raw_bytes)
+    end
+
+    raw_bytes
+  end
+
+  #
+  # Unwrap the given packet data from any prefixes and suffixes that are stored in
+  # the associated C2 profile client configuration (if it exists) and handle
+  # decoding of data
+  #
+  def unwrap_packet(raw_bytes)
+    if self.c2_profile
+      raw_bytes = self.c2_profile.unwrap_inbound_post(raw_bytes)
+    end
+
+    raw_bytes
   end
 
   #
@@ -130,6 +158,8 @@ class Client
     self.conn_id      = opts[:conn_id]
     self.url          = opts[:url]
     self.ssl          = opts[:ssl]
+
+    self.c2_profile = opts[:c2_profile]
 
     self.pivot_session = opts[:pivot_session]
     if self.pivot_session
@@ -164,8 +194,11 @@ class Client
         self.ssl_cert = ::File.read(opts[:ssl_cert])
       end
     end
+    # Use the debug build if specified
+    self.debug_build = opts[:debug_build]
 
-    # Protocol specific dispatch mixins go here, this may be neader with explicit Client classes
+
+    # Protocol specific dispatch mixins go here, this may be neater with explicit Client classes
     opts[:dispatch_ext].each {|dx| self.extend(dx)} if opts[:dispatch_ext]
     initialize_passive_dispatcher if opts[:passive_dispatcher]
 
@@ -494,6 +527,14 @@ class Client
   # The timestamp of the last received response
   #
   attr_accessor :last_checkin
+  #
+  # Reference to the c2 profile instance associated with this connection, if any.
+  #
+  attr_accessor :c2_profile
+  #
+  # Whether or not to use a debug build for loaded extensions
+  #
+  attr_accessor :debug_build
 
 protected
   attr_accessor :parser, :ext_aliases # :nodoc:
@@ -502,4 +543,3 @@ protected
 end
 
 end; end; end
-

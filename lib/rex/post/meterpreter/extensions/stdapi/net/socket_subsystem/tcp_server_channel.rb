@@ -1,5 +1,4 @@
 # -*- coding: binary -*-
-require 'timeout'
 require 'thread'
 require 'rex/socket/parameters'
 require 'rex/post/meterpreter/channels/stream'
@@ -31,7 +30,7 @@ class TcpServerChannel < Rex::Post::Meterpreter::Channel
   # Rex::Post::Meterpreter::Extensions::Stdapi::Net::Socket. All incoming requests from the meterpreter
   # for a COMMAND_ID_STDAPI_NET_TCP_CHANNEL_OPEN will be processed here. We create a new TcpClientChannel for each request
   # received and store it in the respective tcp server channels list of new pending client channels.
-  # These new tcp client channels are passed off via a call the the tcp server channels accept() method.
+  # These new tcp client channels are passed off via a call the tcp server channels accept() method.
   #
   def self.request_handler(client, packet)
     return false unless packet.method == COMMAND_ID_STDAPI_NET_TCP_CHANNEL_OPEN
@@ -52,7 +51,8 @@ class TcpServerChannel < Rex::Post::Meterpreter::Channel
       }
     )
 
-    client_channel = TcpClientChannel.new(client, cid, TcpClientChannel, CHANNEL_FLAG_SYNCHRONOUS, packet, {:sock_params => params})
+    client_channel = TcpClientChannel.new(client, cid, TcpClientChannel, CHANNEL_FLAG_SYNCHRONOUS, packet, sock_params: params)
+    ilog("enqueueing new TCP client with channel id #{cid}")
 
     @@server_channels[server_channel] ||= ::Queue.new
     @@server_channels[server_channel].enq(client_channel)
@@ -89,6 +89,10 @@ class TcpServerChannel < Rex::Post::Meterpreter::Channel
 
     unless sock_params.nil?
       @params = sock_params.merge(Socket.parameters_from_response(packet))
+      if sock_params.ssl
+        extend(Rex::Socket::SslTcpServer)
+        initsock(sock_params)
+      end
     end
   end
 
@@ -97,7 +101,7 @@ class TcpServerChannel < Rex::Post::Meterpreter::Channel
   # and returns nil if no new client connection is available.
   #
   def accept_nonblock
-    _accept(true)
+    _accept(nonblock: true)
   end
 
   #
@@ -107,27 +111,27 @@ class TcpServerChannel < Rex::Post::Meterpreter::Channel
   def accept(opts = {})
     timeout = opts['Timeout']
     if (timeout.nil? || timeout <= 0)
-      timeout = 0
+      timeout = nil
     end
 
-    result = nil
-    begin
-      ::Timeout.timeout(timeout) {
-        result = _accept
-      }
-    rescue Timeout::Error
-    end
-
-    result
+    _accept(timeout: timeout)
   end
 
 protected
 
-  def _accept(nonblock = false)
+  # Uses Queue#deq(timeout:) instead of ::Timeout.timeout to avoid
+  # GVL contention causing missed connections in Ruby 3.x
+  def _accept(nonblock: false, timeout: nil)
     result = nil
 
     begin
-      channel = @@server_channels[self].deq(nonblock)
+      if nonblock
+        channel = @@server_channels[self].deq(true)
+      elsif timeout
+        channel = @@server_channels[self].deq(timeout: timeout)
+      else
+        channel = @@server_channels[self].deq
+      end
 
       if channel
         result = channel.lsock
@@ -137,7 +141,7 @@ protected
         result.extend(Rex::Socket::Tcp)
       end
     rescue ThreadError
-      # This happens when there's no clients in the queue
+      # No clients in queue (nonblock mode)
     end
 
     result
@@ -146,4 +150,3 @@ protected
 end
 
 end; end; end; end; end; end; end
-

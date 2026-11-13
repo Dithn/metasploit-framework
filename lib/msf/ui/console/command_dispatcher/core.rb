@@ -11,7 +11,6 @@
 
 
 require 'msf/core/opt_condition'
-
 require 'optparse'
 
 module Msf
@@ -33,65 +32,113 @@ class Core
 
   # Session command options
   @@sessions_opts = Rex::Parser::Arguments.new(
-    "-c"  => [ true,  "Run a command on the session given with -i, or all"             ],
-    "-C"  => [ true,  "Run a Meterpreter Command on the session given with -i, or all" ],
-    "-h"  => [ false, "Help banner"                                                    ],
-    "-i"  => [ true,  "Interact with the supplied session ID"                          ],
-    "-l"  => [ false, "List all active sessions"                                       ],
-    "-v"  => [ false, "List all active sessions in verbose mode"                       ],
-    "-d" =>  [ false, "List all inactive sessions"                                     ],
-    "-q"  => [ false, "Quiet mode"                                                     ],
-    "-k"  => [ true,  "Terminate sessions by session ID and/or range"                  ],
-    "-K"  => [ false, "Terminate all sessions"                                         ],
-    "-s"  => [ true,  "Run a script or module on the session given with -i, or all"    ],
-    "-u"  => [ true,  "Upgrade a shell to a meterpreter session on many platforms"     ],
-    "-t"  => [ true,  "Set a response timeout (default: 15)"                           ],
-    "-S"  => [ true,  "Row search filter."                                             ],
-    "-x" =>  [ false, "Show extended information in the session table"                 ],
-    "-n" =>  [ true,  "Name or rename a session by ID"                                 ])
+    ["-c", "--command"]              => [ true,  "Run a command on the session given with -i, or all", "<command>"               ],
+    ["-C", "--meterpreter-command"]  => [ true,  "Run a Meterpreter Command on the session given with -i, or all", "<command>"   ],
+    ["-h", "--help"]                 => [ false, "Help banner"                                                                   ],
+    ["-i", "--interact"]             => [ true,  "Interact with the supplied session ID", "<id>"                                 ],
+    ["-l", "--list"]                 => [ false, "List all active sessions"                                                      ],
+    ["-v", "--list-verbose"]         => [ false, "List all active sessions in verbose mode"                                      ],
+    ["-d", "--list-inactive"]        => [ false, "List all inactive sessions"                                                    ],
+    ["-q", "--quiet"]                => [ false, "Quiet mode"                                                                    ],
+    ["-k", "--kill"]                 => [ true,  "Terminate sessions by session ID and/or range", "<id>"                         ],
+    ["-K", "--kill-all"]             => [ false, "Terminate all sessions"                                                        ],
+    ["-s", "--script"]               => [ true,  "Run a script or module on the session given with -i, or all", "<script>"       ],
+    ["-u", "--upgrade"]              => [ true,  "Upgrade a shell to a meterpreter session on many platforms", "<id>"            ],
+    ["-t", "--timeout"]              => [ true,  "Set a response timeout (default: 15)", "<seconds>"                             ],
+    ["-S", "--search"]               => [ true,  "Row search filter. (ex: sessions --search 'last_checkin:less_than:10s session_id:5 session_type:meterpreter')", "<filter>"],
+    ["-x", "--list-extended"]        => [ false, "Show extended information in the session table"                                ],
+    ["-n", "--name"]                 => [ true,  "Name or rename a session by ID", "<id> <name>"                                 ])
 
 
   @@threads_opts = Rex::Parser::Arguments.new(
-    "-h" => [ false, "Help banner."                                   ],
-    "-k" => [ true,  "Terminate the specified thread ID."             ],
-    "-K" => [ false, "Terminate all non-critical threads."            ],
-    "-i" => [ true,  "Lists detailed information about a thread."     ],
-    "-l" => [ false, "List all background threads."                   ],
-    "-v" => [ false, "Print more detailed info.  Use with -i and -l"  ])
+    ["-h", "--help"]            => [ false, "Help banner."                                           ],
+    ["-k", "--kill"]            => [ true,  "Terminate the specified thread ID.", "<id>"             ],
+    ["-K", "--kill-all"]        => [ false, "Terminate all non-critical threads."                    ],
+    ["-i", "--info"]            => [ true,  "Lists detailed information about a thread.", "<id>"     ],
+    ["-l", "--list"]            => [ false, "List all background threads."                           ],
+    ["-v", "--verbose"]         => [ false, "Print more detailed info.  Use with -i and -l"          ])
 
   @@tip_opts = Rex::Parser::Arguments.new(
-    "-h" => [ false, "Help banner."                                   ])
+    ["-h", "--help"] => [ false, "Help banner."                                   ])
 
   @@debug_opts = Rex::Parser::Arguments.new(
-    "-h" => [ false, "Help banner."                                   ],
-    "-d" => [ false, "Display the Datastore Information."             ],
-    "-c" => [ false, "Display command history."                       ],
-    "-e" => [ false, "Display the most recent Error and Stack Trace." ],
-    "-l" => [ false, "Display the most recent logs."                  ],
-    "-v" => [ false, "Display versions and install info."             ])
+    ["-h", "--help"]            => [ false, "Help banner."                                   ],
+    ["-d", "--datastore"]       => [ false, "Display the datastore information."             ],
+    ["-c", "--commands"] => [ false, "Display command history."                       ],
+    ["-e", "--errors"]     => [ false, "Display the most recent Error and Stack Trace." ],
+    ["-l", "--logs"]            => [ false, "Display the most recent logs."                  ],
+    ["-v", "--version"]         => [ false, "Display versions and install info."             ],
+    ["-s", "--database"]           => [ false, "Display database statistics."                   ])
 
   @@connect_opts = Rex::Parser::Arguments.new(
-    "-h" => [ false, "Help banner."                                   ],
-    "-p" => [ true,  "List of proxies to use."                        ],
-    "-C" => [ false, "Try to use CRLF for EOL sequence."              ],
-    "-c" => [ true,  "Specify which Comm to use."                     ],
-    "-i" => [ true,  "Send the contents of a file."                   ],
-    "-P" => [ true,  "Specify source port."                           ],
-    "-S" => [ true,  "Specify source address."                        ],
-    "-s" => [ false, "Connect with SSL."                              ],
-    "-u" => [ false, "Switch to a UDP socket."                        ],
-    "-w" => [ true,  "Specify connect timeout."                       ],
-    "-z" => [ false, "Just try to connect, then return."              ])
-
-  @@search_opts = Rex::Parser::Arguments.new(
-    "-h" => [ false, "Help banner."                                   ],
-    "-S" => [ true, "Row search filter."                              ])
+    ["-h", "--help"]           => [ false, "Help banner."                                                ],
+    ["-p", "--proxies"]        => [ true,  "List of proxies to use.", "<proxies>"                        ],
+    ["-C", "--crlf"]           => [ false, "Try to use CRLF for EOL sequence."                           ],
+    ["-c", "--comm"]           => [ true,  "Specify which Comm to use.", "<comm>"                        ],
+    ["-i", "--send-contents"]  => [ true,  "Send the contents of a file.", "<file>"                      ],
+    ["-P", "--source-port"]    => [ true,  "Specify source port.", "<port>"                              ],
+    ["-S", "--source-address"] => [ true,  "Specify source address.", "<address>"                        ],
+    ["-s", "--ssl"]            => [ false, "Connect with SSL."                                           ],
+    ["-u", "--udp"]            => [ false, "Switch to a UDP socket."                                     ],
+    ["-w", "--timeout"]        => [ true,  "Specify connect timeout.", "<seconds>"                       ],
+    ["-z", "--try-connection"] => [ false, "Just try to connect, then return."                           ])
 
   @@history_opts = Rex::Parser::Arguments.new(
-    "-h" => [ false, "Help banner."                                   ],
-    "-a" => [ false, "Show all commands in history."                  ],
-    "-n" => [ true,  "Show the last n commands."                      ],
-    "-c" => [ false, "Clear command history and history file."        ])
+    ["-h", "--help"]            => [ false, "Help banner."                                   ],
+    ["-a", "--all-commands"]    => [ false, "Show all commands in history."                  ],
+    ["-n"] => [ true,  "Show the last n commands.", "<num>"             ],
+    ["-c", "--clear"]           => [ false, "Clear command history and history file."        ])
+
+  @@save_opts = Rex::Parser::Arguments.new(
+    ["-h", "--help"]           => [ false, "Help banner."                                                                   ],
+    ["-r", "--reload-default"] => [ false, "Reload default options for the active module."                                  ],
+    ["-l", "--load"]           => [ false, "Load the saved options for the active module."                                  ],
+    ["-d", "--delete-all"]     => [ false, "Delete saved options for all modules from the config file."                     ])
+
+  # set command options
+  @@setg_opts = Rex::Parser::Arguments.new(
+    ["-h", "--help"] => [ false, "Help banner."],
+    ["-c", "--clear"] => [ false, "Clear the values, explicitly setting to nil (default)"]
+  )
+
+  @@set_opts = @@setg_opts.merge(
+    ["-g", "--global"] => [ false, "Operate on global datastore variables"]
+  )
+
+  # unset command options
+  @@unsetg_opts = Rex::Parser::Arguments.new(
+    ["-h", "--help"] => [ false, "Help banner."],
+  )
+
+  @@unset_opts = @@unsetg_opts.merge(
+    ["-g", "--global"] => [ false, "Operate on global datastore variables"]
+  )
+
+  SESSION_TYPE = 'session_type'
+  SESSION_ID = 'session_id'
+  LAST_CHECKIN = 'last_checkin'
+  LESS_THAN = 'less_than'
+  GREATER_THAN = 'greater_than'
+
+  VALID_SESSION_SEARCH_PARAMS =
+    [
+      LAST_CHECKIN,
+      SESSION_ID,
+      SESSION_TYPE
+    ]
+  VALID_OPERATORS =
+    [
+      LESS_THAN,
+      GREATER_THAN
+    ]
+
+  private_constant :VALID_SESSION_SEARCH_PARAMS
+  private_constant :VALID_OPERATORS
+  private_constant :SESSION_TYPE
+  private_constant :SESSION_ID
+  private_constant :LAST_CHECKIN
+  private_constant :GREATER_THAN
+  private_constant :LESS_THAN
 
   # Returns the list of commands supported by this command dispatcher
   def commands
@@ -225,24 +272,46 @@ class Core
   def cmd_banner(*args)
     banner  = "%cya" + Banner.to_s + "%clr\n\n"
 
-    stats       = framework.stats
-    version     = "%yelmetasploit v#{Metasploit::Framework::VERSION}%clr",
-    exp_aux_pos = "#{stats.num_exploits} exploits - #{stats.num_auxiliary} auxiliary - #{stats.num_post} post",
-    pay_enc_nop = "#{stats.num_payloads} payloads - #{stats.num_encoders} encoders - #{stats.num_nops} nops",
-    eva         = "#{stats.num_evasion} evasion",
-    padding     = 48
+    stats = framework.stats
+    version = "%yelmetasploit v#{Metasploit::Framework::VERSION}%clr",
+    stats_line_1 = [
+      "#{stats.num_exploits.to_fs(:delimited)} exploits",
+      "#{stats.num_auxiliary.to_fs(:delimited)} auxiliary",
+      "#{stats.num_payloads.to_fs(:delimited)} payloads"
+    ].join(' - ')
+    stats_line_2 = [
+      "#{stats.num_post.to_fs(:delimited)} post",
+      "#{stats.num_encoders.to_fs(:delimited)} encoders",
+      "#{stats.num_nops.to_fs(:delimited)} nops",
+      "#{stats.num_evasion.to_fs(:delimited)} evasion"
+    ].join(' - ')
+    padding = 54
 
     banner << ("       =[ %-#{padding+8}s]\n" % version)
-    banner << ("+ -- --=[ %-#{padding}s]\n" % exp_aux_pos)
-    banner << ("+ -- --=[ %-#{padding}s]\n" % pay_enc_nop)
-    banner << ("+ -- --=[ %-#{padding}s]\n" % eva)
+    banner << ("+ -- --=[ %-#{padding}s]\n" % stats_line_1)
+    banner << ("+ -- --=[ %-#{padding}s]\n" % stats_line_2)
 
     banner << "\n"
-    banner << Msf::Serializer::ReadableText.word_wrap("Metasploit tip: #{Tip.sample}\n", indent = 0, cols = 60)
+    banner << Rex::Text.wordwrap('Metasploit Documentation: https://docs.metasploit.com/', indent = 0, cols = 60)
+    banner << Rex::Text.wordwrap('The Metasploit Framework is a Rapid7 Open Source Project', indent = 0, cols = 60)
 
     # Display the banner
     print_line(banner)
 
+  end
+
+  #
+  # Tab completion for the tips command
+  #
+  # @param str [String] the string currently being typed before tab was hit
+  # @param words [Array<String>] the previously completed words on the command line.  words is always
+  # at least 1 when tab completion has reached this stage since the command itself has been completed
+  def cmd_tips_tabs(str, words)
+    if words.length == 1
+      return @@tip_opts.option_keys.select { |opt| opt.start_with?(str) }
+    end
+
+    []
   end
 
   def cmd_tips_help
@@ -258,7 +327,7 @@ class Core
   # Display useful productivity tips to the user.
   #
   def cmd_tips(*args)
-    if args.include?("-h")
+    if args.include?("-h") || args.include?("--help")
       cmd_tip_help
     else
       tbl = Table.new(
@@ -276,6 +345,21 @@ class Core
 
   alias cmd_tip cmd_tips
 
+  #
+  # Tab completion for the debug command
+  #
+  # @param str [String] the string currently being typed before tab was hit
+  # @param words [Array<String>] the previously completed words on the command line.  words is always
+  # at least 1 when tab completion has reached this stage since the command itself has been completed
+  def cmd_debug_tabs(str, words)
+    if words.length >= 1
+      return @@debug_opts.option_keys.select do |opt|
+        opt.start_with?(str) && !words.include?(opt)
+      end
+    end
+
+    []
+  end
 
   def cmd_debug_help
     print_line "Usage: debug [options]"
@@ -295,7 +379,7 @@ class Core
       return
     end
 
-    if args.include?("-h")
+    if args.include?("-h") || args.include?("--help")
       cmd_debug_help
     else
       output = ""
@@ -311,6 +395,8 @@ class Core
           output << Debug.logs
         when '-v'
           output << Debug.versions(framework)
+        when '-s'
+          output << Debug.database_configuration(framework)
         end
       end
 
@@ -322,6 +408,27 @@ class Core
         print_line output
       end
     end
+  end
+
+  #
+  # Tab completion for the connect command
+  #
+  # @param str [String] the string currently being typed before tab was hit
+  # @param words [Array<String>] the previously completed words on the command line.  words is always
+  # at least 1 when tab completion has reached this stage since the command itself has been completed
+  def cmd_connect_tabs(str, words)
+    if words.length == 1
+      return @@connect_opts.option_keys.select do |opt|
+        opt.start_with?(str) && !words.include?(opt)
+      end
+    end
+
+    case words[-1]
+    when '-c', '--comm'
+      # Rex::Socket::Comm
+    end
+
+    []
   end
 
   def cmd_connect_help
@@ -336,7 +443,7 @@ class Core
   # Talk to a host
   #
   def cmd_connect(*args)
-    if args.length < 2 or args.include?("-h")
+    if args.length < 2 or args.include?("-h") or args.include?("--help")
       cmd_connect_help
       return false
     end
@@ -589,8 +696,13 @@ class Core
 
       framework.features.set(feature_name, value == 'true')
       print_line("#{feature_name} => #{value}")
-      # Reload the current module, as feature flags may impact the available module options etc
-      driver.run_single("reload") if driver.active_module
+      # Some flags may require a full console restart
+      if framework.features.requires_restart?(feature_name)
+        print_warning("Run the #{Msf::Ui::Tip.highlight("save")} command and restart the console for this feature to take effect.")
+      else
+        # Reload the current module, as feature flags may impact the available module options etc
+        driver.run_single("reload") if driver.active_module
+      end
     when 'print'
       if framework.features.all.empty?
         print_line 'There are no features to enable at this time. Either the features have been removed, or integrated by default.'
@@ -631,8 +743,8 @@ class Core
   #
   # Tab completion for the features command
   #
-  # @param str [String] the string currently being typed before tab was hit
-  # @param words [Array<String>] the previously completed words on the command line.  words is always
+  # @param _str [String] The string currently being typed before tab was hit
+  # @param words [Array<String>] The previously completed words on the command line.  words is always
   # at least 1 when tab completion has reached this stage since the command itself has been completed
   def cmd_features_tabs(_str, words)
     if words.length == 1
@@ -721,7 +833,7 @@ class Core
 
   def cmd_history_tabs(str, words)
     return [] if words.length > 1
-    @@history_opts.fmt.keys
+    @@history_opts.option_keys
   end
 
   def cmd_sleep_help
@@ -855,13 +967,12 @@ class Core
   # @param str [String] the string currently being typed before tab was hit
   # @param words [Array<String>] the previously completed words on the command line.  words is always
   # at least 1 when tab completion has reached this stage since the command itself has been completed
-
   def cmd_threads_tabs(str, words)
     if words.length == 1
-      return @@threads_opts.fmt.keys
+      return @@threads_opts.option_keys
     end
 
-    if words.length == 2 and (@@threads_opts.fmt[words[1]] || [false])[0]
+    if words.length == 2 && @@threads_opts.include?(words[1]) && @@threads_opts.arg_required?(words[1])
       return framework.threads.each_index.map{ |idx| idx.to_s }
     end
 
@@ -888,7 +999,7 @@ class Core
       items = Dir.entries(plugin_directory).keep_if { |n| n.match(/^.+\.rb$/)}
       next if items.empty?
       print_status("Available #{type} plugins:")
-      items.each do |item|
+      items.sort.each do |item|
         print_line("    * #{item.split('.').first}")
       end
       print_line
@@ -906,7 +1017,7 @@ class Core
 
     # Parse any extra options that should be passed to the plugin
     args.each { |opt|
-      k, v = opt.split(/\=/)
+      k, v = opt.split('=')
 
       opts[k] = v if (k and v)
     }
@@ -957,7 +1068,6 @@ class Core
   # @param str [String] the string currently being typed before tab was hit
   # @param words [Array<String>] the previously completed words on the command line.  words is always
   # at least 1 when tab completion has reached this stage since the command itself has been completed
-
   def cmd_load_tabs(str, words)
     tabs = []
 
@@ -980,7 +1090,7 @@ class Core
       tabs += tab_complete_filenames(str,words)
     end
 
-    return tabs.map{|e| e.sub(/\.rb/, '')} - framework.plugins.map(&:name)
+    return tabs.map{|e| e.sub('.rb', '')} - framework.plugins.map(&:name)
   end
 
   def cmd_route_help
@@ -1031,6 +1141,7 @@ class Core
         if Rex::Socket.is_ip_addr?(args.first)
           netmask = args.shift
         elsif Rex::Socket.is_ip_addr?(subnet)
+          cidr_mask ||= Rex::Socket.is_ipv6?(subnet) ? 128 : 32
           netmask = Rex::Socket.addr_ctoa(cidr_mask, v6: Rex::Socket.is_ipv6?(subnet))
         end
 
@@ -1105,8 +1216,8 @@ class Core
             ],
           'ColProps' =>
             {
-              'Subnet'  => { 'MaxWidth' => 17 },
-              'Netmask' => { 'MaxWidth' => 17 },
+              'Subnet'  => { 'Width' => 17 },
+              'Netmask' => { 'Width' => 17 },
             })
 
         # IPv6 Table
@@ -1123,8 +1234,8 @@ class Core
             ],
           'ColProps' =>
             {
-              'Subnet'  => { 'MaxWidth' => 17 },
-              'Netmask' => { 'MaxWidth' => 17 },
+              'Subnet'  => { 'Width' => 17 },
+              'Netmask' => { 'Width' => 17 },
             })
 
         # Populate Route Tables
@@ -1132,7 +1243,7 @@ class Core
           if (route.comm.kind_of?(Msf::Session))
             gw = "Session #{route.comm.sid}"
           else
-            gw = route.comm.name.split(/::/)[-1]
+            gw = route.comm.name.split('::')[-1]
           end
 
           tbl_ipv4 << [ route.subnet, route.netmask, gw ] if Rex::Socket.is_ipv4?(route.netmask)
@@ -1166,7 +1277,6 @@ class Core
   # @param str [String] the string currently being typed before tab was hit
   # @param words [Array<String>] the previously completed words on the command line.  words is always
   # at least 1 when tab completion has reached this stage since the command itself has been completed
-
   def cmd_route_tabs(str, words)
     if words.length == 1
       return %w{add remove get flush print}
@@ -1203,42 +1313,99 @@ class Core
     ret
   end
 
+  #
+  # Tab completion for the save command
+  #
+  # @param str [String] the string currently being typed before tab was hit
+  # @param words [Array<String>] the previously completed words on the command line.  words is always
+  # at least 1 when tab completion has reached this stage since the command itself has been completed
+  def cmd_save_tabs(str, words)
+    if words.length == 1
+      @@save_opts.option_keys.select { |opt| opt.start_with?(str) }
+    end
+  end
+
+  # Print save help information
   def cmd_save_help
-    print_line "Usage: save"
+    print_line 'Usage: save [options]'
     print_line
-    print_line "Save the active datastore contents to disk for automatic use across restarts of the console"
-    print_line
+    print_line 'Save the active datastore contents to disk for automatic use across restarts of the console'
     print_line "The configuration is stored in #{Msf::Config.config_file}"
-    print_line
+    print @@save_opts.usage
   end
 
   #
-  # Saves the active datastore contents to disk for automatic use across
+  # Deletes or saves the active datastore contents to disk for automatic use across
   # restarts of the console.
   #
   def cmd_save(*args)
-    # Save the console config
-    driver.save_config
-
-    begin
-      FeatureManager.instance.save_config
-    rescue StandardException => e
-      elog(e)
-    end
-
-    # Save the framework's datastore
-    begin
-      framework.save_config
-
-      if (active_module)
-        active_module.save_config
-      end
-    rescue
-      log_error("Save failed: #{$!}")
+    if args.include?('-h') || args.include?('--help')
+      cmd_save_help
       return false
     end
 
-    print_line("Saved configuration to: #{Msf::Config.config_file}")
+    if args.empty?
+      # Save config for current module
+      # Save the console config
+      driver.save_config
+
+      begin
+        FeatureManager.instance.save_config
+      rescue StandardException => e
+        elog(e)
+      end
+
+      # Save the framework's datastore
+      begin
+        framework.save_config
+        if driver.framework.dns_resolver
+          driver.framework.dns_resolver.save_config
+        end
+
+        if active_module
+          active_module.save_config
+        end
+      rescue
+        log_error("Save failed: #{$!}")
+        return false
+      end
+
+      print_line("Saved configuration to: #{Msf::Config.config_file}")
+    end
+
+    @@save_opts.parse(args) do |opt|
+      case opt
+      when '-d'
+        # Delete all saved options for modules from the config file.
+        # No framework options will be deleted.
+        begin
+          ini = Rex::Parser::Ini.new(::Msf::Config.config_file)
+
+          ini.delete_if { |k, _v| !k.start_with?('framework') }
+
+          ini.to_file(::Msf::Config.config_file)
+        rescue StandardError
+          print_error("Failed to delete console config: #{$!}")
+        end
+
+        if active_module
+          active_module.import_defaults
+        end
+        print_line('Deleted saved configs for all modules.')
+      when '-r'
+        active_module.import_defaults
+        print_line('Reloaded default options.')
+      when '-l'
+        active_module.load_config
+        print_line("Loaded config from #{Msf::Config.config_file}.")
+      when '-h'
+        cmd_save_help
+        return false
+      else
+        print_line("Unknown option: #{opt}")
+        print(@@save_opts.usage)
+      end
+    end
   end
 
   def cmd_spool_help
@@ -1262,10 +1429,14 @@ class Core
     color = driver.output.config[:color]
 
     if args[0] == "off"
-      driver.init_ui(driver.input, Rex::Ui::Text::Output::Stdio.new)
+      stdout = Rex::Ui::Text::Output::Stdio.new
+      driver.init_ui(driver.input, stdout)
+      active_module.init_ui(driver.input, stdout) if defined?(active_module) && active_module
       msg = "Spooling is now disabled"
     else
-      driver.init_ui(driver.input, Rex::Ui::Text::Output::Tee.new(args[0]))
+      stdout = Rex::Ui::Text::Output::Tee.new(args[0])
+      driver.init_ui(driver.input, stdout)
+      active_module.init_ui(driver.input, stdout) if defined?(active_module) && active_module
       msg = "Spooling to file #{args[0]}..."
     end
 
@@ -1303,6 +1474,7 @@ class Core
     response_timeout = 15
     search_term = nil
     session_name = nil
+    has_script_arguments = false
 
     # any arguments that don't correspond to an option or option arg will
     # be put in here
@@ -1314,55 +1486,60 @@ class Core
     else
       # Parse the command options
       @@sessions_opts.parse(args) do |opt, idx, val|
+        next if has_script_arguments
+
         case opt
-        when "-q"
+        when "-q", "--quiet"
           quiet = true
         # Run a command on all sessions, or the session given with -i
-        when "-c"
+        when "-c", "--command"
           method = 'cmd'
           cmds << val if val
-        when "-C"
+        when "-C", "--meterpreter-command"
             method = 'meterp-cmd'
             cmds << val if val
         # Display the list of inactive sessions
-        when "-d"
+        when "-d", "--list-inactive"
           show_inactive = true
           method = 'list_inactive'
-        when "-x"
+        when "-x", "--list-extended"
           show_extended = true
-        when "-v"
+        when "-v", "--list-verbose"
           verbose = true
         # Do something with the supplied session identifier instead of
         # all sessions.
-        when "-i"
+        when "-i", "--interact"
           sid = val
         # Display the list of active sessions
-        when "-l"
+        when "-l", "--list"
           show_active = true
           method = 'list'
-        when "-k"
+        when "-k", "--kill"
           method = 'kill'
           sid = val || false
-        when "-K"
+        when "-K", "--kill-all"
           method = 'killall'
         # Run a script or module on specified sessions
-        when "-s"
+        when "-s", "--script"
           unless script
             method = 'script'
             script = val
+            # Assume any parameter after the script name is a flag/argument we want to pass to the script itself.
+            extra += args[(idx + 1)..-1]
+            has_script_arguments = true
           end
         # Upload and exec to the specific command session
-        when "-u"
+        when "-u", "--upgrade"
           method = 'upexec'
           sid = val || false
         # Search for specific session
         when "-S", "--search"
           search_term = val
         # Display help banner
-        when "-h"
+        when "-h", "--help"
           cmd_sessions_help
           return false
-        when "-t"
+        when "-t", "--timeout"
           if val.to_s =~ /^\d+$/
             response_timeout = val.to_i
           end
@@ -1382,13 +1559,27 @@ class Core
     unless sid.nil? || method == 'interact'
       session_list = build_range_array(sid)
       if session_list.blank?
-        print_error("Please specify valid session identifier(s)")
+        print_error('Please specify valid session identifier(s)')
         return false
       end
     end
 
     if show_inactive && !framework.db.active
       print_warning("Database not connected; list of inactive sessions unavailable")
+    end
+
+    if search_term
+      matching_sessions = get_matching_sessions(search_term)
+
+      # check for nil value indicating validation has found invalid input in search helper functions. Error will have been printed already
+      unless matching_sessions
+        return nil
+      end
+
+      if matching_sessions.empty?
+        print_error('No matching sessions.')
+        return nil
+      end
     end
 
     last_known_timeout = nil
@@ -1400,9 +1591,12 @@ class Core
         print_error("No command specified!")
         return false
       end
+
       cmds.each do |cmd|
         if sid
           sessions = session_list
+        elsif matching_sessions
+          sessions = matching_sessions
         else
           sessions = framework.sessions.keys.sort
         end
@@ -1420,7 +1614,8 @@ class Core
           end
 
           begin
-            if session.type == 'meterpreter'
+            case session.type.downcase
+            when 'meterpreter'
               # If session.sys is nil, dont even try..
               unless session.sys
                 print_error("Session #{s} does not have stdapi loaded, skipping...")
@@ -1437,12 +1632,20 @@ class Core
                 print_line(data) unless data.blank?
               rescue ::Rex::Post::Meterpreter::RequestError
                 print_error("Failed: #{$!.class} #{$!}")
-              rescue Rex::TimeoutError
-                print_error("Operation timed out")
+              rescue ::Rex::TimeoutError
+                print_error("Operation timed out. Timeout currently #{session.response_timeout} seconds, you can configure this with %grnsessions -c <cmd> --timeout <value>%clr")
               end
-            elsif session.type == 'shell' || session.type == 'powershell'
+            when 'shell', 'powershell'
               output = session.shell_command(cmd)
               print_line(output) if output
+            when 'mssql', 'postgresql', 'mysql'
+              session.run_cmd(cmd, driver.output)
+            when 'hwbridge'
+              if session.respond_to?(:console) && session.console
+                session.console.run_single(cmd)
+              else
+                print_error("Session #{s} has no hwbridge console; skipping...")
+              end
             end
           ensure
             # Restore timeout for each session
@@ -1474,20 +1677,28 @@ class Core
 
         cmds.each do |cmd|
           sessions.each do |session|
-            session = verify_session(session)
-            unless session.type == 'meterpreter'
-              print_error "Session ##{session.sid} is not a Meterpreter shell. Skipping..."
-              next
-            end
+            begin
+              session = verify_session(session)
+              unless session.type == 'meterpreter'
+                print_error "Session ##{session.sid} is not a Meterpreter shell. Skipping..."
+                next
+              end
 
-            next unless session
-            print_status("Running '#{cmd}' on #{session.type} session #{session.sid} (#{session.session_host})")
-            if session.respond_to?(:response_timeout)
-              last_known_timeout = session.response_timeout
-              session.response_timeout = response_timeout
-            end
+              next unless session
+              print_status("Running '#{cmd}' on #{session.type} session #{session.sid} (#{session.session_host})")
+              if session.respond_to?(:response_timeout)
+                last_known_timeout = session.response_timeout
+                session.response_timeout = response_timeout
+                session.on_run_command_error_proc = log_on_timeout_error("Send timed out. Timeout currently #{session.response_timeout} seconds, you can configure this with %grnsessions -C <cmd> --timeout <value>%clr")
+              end
 
-            output = session.run_cmd(cmd, driver.output)
+              output = session.run_cmd(cmd, driver.output)
+            ensure
+              if session.respond_to?(:response_timeout) && last_known_timeout
+                session.response_timeout = last_known_timeout
+                session.on_run_command_error_proc = nil
+              end
+            end
           end
         end
     when 'kill'
@@ -1512,20 +1723,27 @@ class Core
         end
       end
     when 'killall'
-      print_status("Killing all sessions...")
-      framework.sessions.each_sorted do |s|
-        session = framework.sessions.get(s)
-        if session
-          if session.respond_to?(:response_timeout)
-            last_known_timeout = session.response_timeout
-            session.response_timeout = response_timeout
-          end
-          begin
-            session.kill
-          ensure
-            if session.respond_to?(:response_timeout) && last_known_timeout
-              session.response_timeout = last_known_timeout
-            end
+      if matching_sessions
+        print_status('Killing matching sessions...')
+        print_line
+        print(Serializer::ReadableText.dump_sessions(framework, show_active: show_active, show_inactive: show_inactive, show_extended: show_extended, verbose: verbose, sessions: matching_sessions))
+        print_line
+      else
+        matching_sessions = framework.sessions
+        print_status('Killing all sessions...')
+      end
+      matching_sessions.each do |_session_id, session|
+        next unless session
+
+        if session.respond_to?(:response_timeout)
+          last_known_timeout = session.response_timeout
+          session.response_timeout = response_timeout
+        end
+        begin
+          session.kill
+        ensure
+          if session.respond_to?(:response_timeout) && last_known_timeout
+            session.response_timeout = last_known_timeout
           end
         end
       end
@@ -1536,16 +1754,19 @@ class Core
           if session.respond_to?(:response_timeout)
             last_known_timeout = session.response_timeout
             session.response_timeout = response_timeout
+            session.on_run_command_error_proc = log_on_timeout_error("Send timed out. Timeout currently #{session.response_timeout} seconds, you can configure this with %grnsessions --interact <id> --timeout <value>%clr")
           end
           print_status("Starting interaction with #{session.name}...\n") unless quiet
           begin
             self.active_session = session
+
             sid = session.interact(driver.input.dup, driver.output)
             self.active_session = nil
             driver.input.reset_tab_completion if driver.input.supports_readline
           ensure
             if session.respond_to?(:response_timeout) && last_known_timeout
               session.response_timeout = last_known_timeout
+              session.on_run_command_error_proc = nil
             end
           end
         else
@@ -1570,12 +1791,14 @@ class Core
           if session.respond_to?(:response_timeout)
             last_known_timeout = session.response_timeout
             session.response_timeout = response_timeout
+            session.on_run_command_error_proc = log_on_timeout_error("Send timed out. Timeout currently #{session.response_timeout} seconds, you can configure this with %grnsessions --timeout <value> --script <script> <id>%clr")
           end
           begin
             print_status("Session #{sess_id} (#{session.session_host}):")
             print_status("Running #{script} on #{session.type} session" +
                           " #{sess_id} (#{session.session_host})")
             begin
+              session.init_ui(driver.input, driver.output)
               session.execute_script(script, *extra)
             rescue ::Exception => e
               log_error("Error executing script or module: #{e.class} #{e}")
@@ -1583,18 +1806,42 @@ class Core
           ensure
             if session.respond_to?(:response_timeout) && last_known_timeout
               session.response_timeout = last_known_timeout
+              session.on_run_command_error_proc = nil
             end
+            session.reset_ui
           end
         else
           print_error("Invalid session identifier: #{sess_id}")
         end
       end
     when 'upexec'
-      print_status("Executing 'post/multi/manage/shell_to_meterpreter' on " +
-                    "session(s): #{session_list}")
       session_list.each do |sess_id|
         session = verify_session(sess_id)
-        if session
+        next unless session
+
+        if session.type == 'smb'
+          # Route SMB sessions to the dedicated upgrade module
+          mod = framework.modules.create('post/windows/manage/smb_to_meterpreter')
+          unless mod
+            print_error('Failed to create post/windows/manage/smb_to_meterpreter module.')
+            next
+          end
+
+          print_status("Executing 'post/windows/manage/smb_to_meterpreter' on session: [#{sess_id}]")
+          opts = { 'SESSION' => sess_id.to_s }
+          if session.exploit_datastore
+            %w[LHOST LPORT TARGET_ARCH].each do |key|
+              opts[key] = session.exploit_datastore[key] if session.exploit_datastore[key]
+            end
+          end
+          mod.run_simple({
+            'LocalInput' => driver.input,
+            'LocalOutput' => driver.output,
+            'Options' => opts
+          })
+        else
+          print_status("Executing 'post/multi/manage/shell_to_meterpreter' on " \
+                        "session: [#{sess_id}]")
           if session.respond_to?(:response_timeout)
             last_known_timeout = session.response_timeout
             session.response_timeout = response_timeout
@@ -1617,7 +1864,7 @@ class Core
       end
     when 'list', 'list_inactive', nil
       print_line
-      print(Serializer::ReadableText.dump_sessions(framework, show_active: show_active, show_inactive: show_inactive, show_extended: show_extended, verbose: verbose, search_term: search_term))
+      print(Serializer::ReadableText.dump_sessions(framework, show_active: show_active, show_inactive: show_inactive, show_extended: show_extended, verbose: verbose, sessions: matching_sessions))
       print_line
     when 'name'
       if session_name.blank?
@@ -1656,26 +1903,203 @@ class Core
     true
   end
 
+  def get_matching_sessions(search_term)
+    matching_sessions = {}
+    terms = search_term.split
+    id_searches = []
+    type_searches = []
+    checkin_searches = []
+    searches = []
+
+    # Group search terms by what's being searched for
+    terms.each do |term|
+      case term.split(':').first
+      when SESSION_ID
+        id_searches << term
+      when SESSION_TYPE
+        type_searches << term
+      when LAST_CHECKIN
+        checkin_searches << term
+      else
+        print_error("Please provide valid search term. Given: #{term.split(':').first}. Supported keywords are: #{VALID_SESSION_SEARCH_PARAMS.join(', ')}")
+        return nil
+      end
+    end
+
+    # Group results by search term - OR filters
+    [id_searches, type_searches].each do |search|
+      next if search.empty?
+
+      id_matches = {}
+      search.each do |term|
+        matches = filter_sessions_by_search(term)
+        return unless matches
+
+        id_matches = id_matches.merge(matches)
+      end
+      searches << id_matches
+    end
+
+    # Retrieve checkin search results. AND filter with a max length of 2
+    unless checkin_searches.empty?
+      unless validate_checkin_searches(checkin_searches)
+        return
+      end
+
+      checkin_matches = filter_sessions_by_search(checkin_searches.first)
+      if checkin_searches[1]
+        matches = filter_sessions_by_search(checkin_searches[1])
+        checkin_matches = checkin_matches.select { |session_id, session| matches[session_id] == session }
+      end
+      searches << checkin_matches
+    end
+
+    # AND all the results together for final session list
+    if searches.empty?
+      print_error('Please provide a valid search query.')
+      return nil
+    else
+      matching_sessions = searches.first
+      searches[1..].each do |result_set|
+        matching_sessions = matching_sessions.select { |session_id, session| result_set[session_id] == session }
+      end
+    end
+    matching_sessions
+  end
+
+  def validate_checkin_searches(checkin_searches)
+    checkin_searches.each do |search_term|
+      unless search_term.split(':').length == 3
+        print_error('Please only specify last_checkin, before or after, and a time. Ex: last_checkin:before:1m30s')
+        return false
+      end
+      time_value = search_term.split(':')[2]
+      time_unit_string = time_value.gsub(/[^a-zA-Z]/, '')
+      unless time_unit_string == time_unit_string.squeeze
+        print_error('Please do not provide duplicate time units in your query')
+        return false
+      end
+      operator = checkin_searches[0].split(':')[1]
+      unless VALID_OPERATORS.include?(operator)
+        print_error("Please specify less_than or greater_than for checkin query. Ex: last_checkin:less_than:1m30s. Given: #{operator}")
+        return false
+      end
+    end
+    if checkin_searches.length > 2
+      print_error("Too many checkin searches. Max: 2. Given: #{checkin_searches.length}")
+      return false
+    elsif checkin_searches.length == 2
+      _, operator1, value1 = checkin_searches[0].split(':')
+      _, operator2, value2 = checkin_searches[1].split(':')
+      unless VALID_OPERATORS.include?(operator1) && VALID_OPERATORS.include?(operator2)
+        print_error('last_checkin can only be searched for using before or after. Ex: last_checkin:before:1m30s')
+        return false
+      end
+      if operator1 == operator2
+        print_error("Cannot search for last_checkin with two #{operator1} arguments.")
+        return false
+      end
+      if (operator1 == GREATER_THAN && parse_duration(value2) < parse_duration(value1)) || (operator1 == LESS_THAN && parse_duration(value1) < parse_duration(value2))
+        print_error('After value must be a larger duration than the before value.')
+        return false
+      end
+    end
+    true
+  end
+
+  def filter_sessions_by_search(search_term)
+    matching_sessions = {}
+    field, = search_term.split(':')
+    framework.sessions.each do |session_id, session|
+      if !session.respond_to?(:last_checkin) && (field == LAST_CHECKIN)
+        next
+      end
+
+      matches_search = evaluate_search_criteria(session, search_term)
+      return nil if matches_search.nil?
+
+      case field
+      when LAST_CHECKIN
+        if session.last_checkin && evaluate_search_criteria(session, search_term)
+          matching_sessions[session_id] = session
+        end
+      when SESSION_TYPE, SESSION_ID
+        matching_sessions[session_id] = session if evaluate_search_criteria(session, search_term)
+      else
+        print_error("Unrecognized search term: #{field}")
+        return nil
+      end
+    end
+    matching_sessions
+  end
+
+  def evaluate_search_criteria(session, search_term)
+    field, operator, value = search_term.split(':')
+
+    case field
+    when LAST_CHECKIN
+      last_checkin_time = session.last_checkin
+      offset = parse_duration(value)
+      return nil unless offset
+
+      threshold_time = Time.now - offset
+      case operator
+      when GREATER_THAN
+        return threshold_time > last_checkin_time
+      when LESS_THAN
+        return threshold_time < last_checkin_time
+      end
+    when SESSION_ID
+      return session.sid.to_s == operator
+    when SESSION_TYPE
+      return session.type.casecmp?(operator)
+    end
+  end
+
+  def parse_duration(duration)
+    total_time = 0
+    time_tokens = duration.scan(/(?:\d+\.?\d*|\.\d+)/).zip(duration.scan(/[a-zA-Z]+/))
+    time_tokens.each do |value, unit|
+      if unit.nil? || value.nil?
+        print_error('Please specify both time units and amounts')
+        return nil
+      end
+      case unit.downcase
+      when 'd'
+        total_time += value.to_f * 86400
+      when 'h'
+        total_time += value.to_f * 3600
+      when 'm'
+        total_time += value.to_f * 60
+      when 's'
+        total_time += value.to_f
+      else
+        print_error("Unrecognized time format: #{value}")
+        return nil
+      end
+    end
+    total_time.to_i
+  end
+
   #
   # Tab completion for the sessions command
   #
   # @param str [String] the string currently being typed before tab was hit
   # @param words [Array<String>] the previously completed words on the command line.  words is always
   # at least 1 when tab completion has reached this stage since the command itself has been completed
-
   def cmd_sessions_tabs(str, words)
     if words.length == 1
-      return @@sessions_opts.fmt.keys
+      return @@sessions_opts.option_keys.select { |opt| opt.start_with?(str) }
     end
 
     case words[-1]
-    when "-i", "-k", "-u"
+    when "-i", "--interact", "-k", "--kill", "-u", "--upgrade"
       return framework.sessions.keys.map { |k| k.to_s }
 
-    when "-c"
+    when "-c", "--command"
       # Can't really complete commands hehe
 
-    when "-s"
+    when "-s", "--search"
       # XXX: Complete scripts
 
     end
@@ -1684,7 +2108,7 @@ class Core
   end
 
   def cmd_set_help
-    print_line "Usage: set [option] [value]"
+    print_line "Usage: set [options] [name] [value]"
     print_line
     print_line "Set the given option to value.  If value is omitted, print the current value."
     print_line "If both are omitted, print options that are currently set."
@@ -1693,6 +2117,7 @@ class Core
     print_line "datastore.  Use -g to operate on the global datastore."
     print_line
     print_line "If setting a PAYLOAD, this command can take an index from `show payloads'."
+    print @@set_opts.usage
     print_line
   end
 
@@ -1700,26 +2125,34 @@ class Core
   # Sets a name to a value in a context aware environment.
   #
   def cmd_set(*args)
-
     # Figure out if these are global variables
     global = false
-
-    if (args[0] == '-g')
-      args.shift
-      global = true
-    end
-
-    # Decide if this is an append operation
     append = false
+    clear = false
 
-    if (args[0] == '-a')
-      args.shift
-      append = true
+    # Manually parse options to allow users to set the strings
+    # such as `-g` in a datastore value
+    loop do
+      if args[0] == '-g' || args[0] == '--global'
+        args.shift
+        global = true
+      elsif args[0] == '-a'
+        args.shift
+        append = true
+      elsif (args[0] == '-c' || args[0] == '--clear')
+        args.shift
+        clear = true
+      else
+        break
+      end
     end
 
+    valid_options = []
     # Determine which data store we're operating on
     if (active_module and global == false)
       datastore = active_module.datastore
+
+      valid_options = valid_datastore_option_names(active_module, include_aliases: true)
     else
       global = true
       datastore = self.framework.datastore
@@ -1741,23 +2174,32 @@ class Core
           (global) ? "Global" : "Module: #{active_module.refname}",
           datastore) + "\n")
       return true
-    elsif (args.length == 1)
-      if (not datastore[args[0]].nil?)
+    elsif args.length == 1 && !clear
+      message = global ? nil : unknown_datastore_option_message(active_module, args[0], valid_options: valid_options)
+      if message.nil?
         print_line("#{args[0]} => #{datastore[args[0]]}")
         return true
       else
-        print_error("Unknown variable")
+        print_error(message)
         cmd_set_help
         return false
       end
     end
 
     # Set the supplied name to the supplied value
-    name  = args[0]
-    value = args[1, args.length-1].join(' ')
+    name, *values_array = args
+    if clear
+      value = nil
+    elsif name.casecmp?('RHOST') || name.casecmp?('RHOSTS')
+      # Wrap any values which contain spaces in quotes to ensure it's parsed correctly later
+      value = values_array.map { |value| value.include?(' ') ? "\"#{value}\"" : value }.join(' ')
+    else
+      value = values_array.join(' ')
+    end
 
     # Set PAYLOAD
-    if name.upcase == 'PAYLOAD' && active_module && (active_module.exploit? || active_module.evasion?)
+    payload_changed = name.upcase == 'PAYLOAD' && active_module && (active_module.exploit? || active_module.evasion?) && !clear
+    if payload_changed
       value = trim_path(value, 'payload')
 
       index_from_list(payload_show_results, value) do |mod|
@@ -1766,7 +2208,11 @@ class Core
         # [name, class] from payload_show_results
         value = mod.first
       end
+    end
 
+    unless global
+      message = unknown_datastore_option_message(active_module, name, valid_options: valid_options)
+      print_warning(message) if message
     end
 
     # If the driver indicates that the value is not valid, bust out.
@@ -1789,14 +2235,43 @@ class Core
       elog('Exception encountered in cmd_set', error: e)
     end
 
+    # Import payload options so validation applies immediately on subsequent set calls
+    if payload_changed
+      import_payload_options(active_module)
+    end
+
     # Set PAYLOAD from TARGET
     if name.upcase == 'TARGET' && active_module && (active_module.exploit? || active_module.evasion?)
       active_module.import_target_defaults
+
+      # When switching targets, always try to select the best payload for the new target.
+      # This ensures we upgrade from generic payloads to target-specific ones, and switch
+      # from incompatible payloads to compatible ones.
+      current_payload = active_module.datastore['PAYLOAD']
+      if current_payload
+        chosen_payload = Msf::Payload.choose_payload(active_module)
+        new_payload = active_module.datastore['PAYLOAD']
+        if chosen_payload && new_payload == chosen_payload && new_payload != current_payload
+          print_status("Switching from #{current_payload} to #{chosen_payload}")
+        end
+      end
     end
 
     # If the new SSL value already set in datastore[name] is different from the old value, warn the user
     if name.casecmp('SSL') == 0 && datastore[name] != old_value
       print_warning("Changing the SSL option's value may require changing RPORT!")
+    end
+
+    if name.casecmp?('SessionTlvLogging')
+      # Check if we need to append the default filename if user provided an output directory
+      if datastore[name].start_with?('file:')
+        pathname = ::Pathname.new(datastore[name].split('file:').last)
+        if ::File.directory?(pathname)
+          datastore[name] = ::File.join(datastore[name], 'sessiontlvlogging.txt')
+        end
+      end
+
+      framework.sessions.each { |_index, session| session.initialize_tlv_logging(datastore[name]) if session.type.casecmp? 'meterpreter' }
     end
 
     print_line("#{name} => #{datastore[name]}")
@@ -1814,19 +2289,32 @@ class Core
   # at least 1 when tab completion has reached this stage since the command itself has been completed
   def cmd_set_tabs(str, words)
     # A value has already been specified
-    return [] if words.length > 2
-
-    # A value needs to be specified
-    if words.length == 2
-      return tab_complete_option_values(active_module, str, words, opt: words[1])
+    if words.length > 3
+      return []
+    elsif words.length == 3 and words[1] != '-g' and words[1] != '--global'
+      return []
     end
-    tab_complete_option_names(active_module, str, words)
+
+    # A value needs to be specified, show tab completion options where possible
+    if words.length == 3 or (words.length == 2 and words[1][0] != '-')
+      return tab_complete_option_values(active_module, str, words, opt: words[-1])
+    end
+
+    option_names = tab_complete_option_names(active_module, str, words)
+    if words.length == 1
+      # Only the command has been provided, offer options which immediately follow the command
+      options = @@set_opts.option_keys.select { |opt| opt.start_with?(str) }
+      return options + option_names
+    end
+
+    option_names
   end
 
   def cmd_setg_help
     print_line "Usage: setg [option] [value]"
     print_line
     print_line "Exactly like set -g, set a value in the global datastore."
+    print @@setg_opts.usage
     print_line
   end
 
@@ -1838,7 +2326,14 @@ class Core
   #   line. `words` is always at least 1 when tab completion has reached this
   #   stage since the command itself has been completed.
   def cmd_unset_tabs(str, words)
-    tab_complete_datastore_names(active_module, str, words)
+    datastore_names = tab_complete_module_datastore_names(active_module, str, words)
+    if words.length == 1
+      # Only the command has been provided, offer options which immediately follow the command
+      options = @@unset_opts.option_keys.select { |opt| opt.start_with?(str) }
+      return options + datastore_names
+    end
+
+    datastore_names
   end
 
   #
@@ -1984,7 +2479,7 @@ class Core
     print_line "Usage: unset [-g] var1 var2 var3 ..."
     print_line
     print_line "The unset command is used to unset one or more variables."
-    print_line "To flush all entires, specify 'all' as the variable name."
+    print_line "To flush all entries, specify 'all' as the variable name."
     print_line "With -g, operates on global datastore variables."
     print_line
   end
@@ -1993,59 +2488,88 @@ class Core
   # Unsets a value if it's been set.
   #
   def cmd_unset(*args)
+    if args.include?('-h') || args.include?('--help')
+      cmd_unset_help
+      return
+    end
 
     # Figure out if these are global variables
     global = false
 
-    if (args[0] == '-g')
-      args.shift
-      global = true
+    @@unset_opts.parse(args) do |opt, idx, val|
+      case opt
+      when '-g'
+        global = true
+      end
+    end
+
+    variable_names = args.reject { |arg| arg.start_with?('-') }
+
+    # No variable names? No cookie.
+    if variable_names.empty?
+      cmd_unset_help
+      return false
     end
 
     # Determine which data store we're operating on
-    if (active_module and global == false)
+    if active_module && !global
       datastore = active_module.datastore
     else
       datastore = framework.datastore
     end
 
-    # No arguments?  No cookie.
-    if (args.length == 0)
-      cmd_unset_help
-      return false
+    is_all_variables = variable_names[0] == 'all'
+    if is_all_variables
+      variable_names = datastore.keys
+      variable_names += Msf::DataStore::GLOBAL_KEYS if global
+      variable_names += ['PAYLOAD'] if !global && active_module && (active_module.exploit? || active_module.evasion?)
+      variable_names = variable_names.uniq(&:downcase)
     end
 
-    # If all was specified, then flush all of the entries
-    if args[0] == 'all'
-      print_line("Flushing datastore...")
+    print_line("Unsetting datastore...") if is_all_variables
 
-      # Re-import default options into the module's datastore
-      if (active_module and global == false)
-        active_module.import_defaults
-      # Or simply clear the global datastore
-      else
-        datastore.clear
-      end
-
-      return true
-    end
-
-    while ((val = args.shift))
-      if (driver.on_variable_unset(global, val) == false)
-        print_error("The variable #{val} cannot be unset at this time.")
+    variable_names.each do |variable_name|
+      if driver.on_variable_unset(global, variable_name) == false
+        print_error("The variable #{variable_name} cannot be unset at this time.") # unless variable_name.casecmp?('PAYLOAD')
         next
       end
 
-      print_line("Unsetting #{val}...")
+      print_line("Unsetting #{variable_name}...") unless is_all_variables
+      datastore.unset(variable_name)
+    end
 
-      datastore.delete(val)
+    # Do a final pass over the datastore. If a user has unset a variable - but it continues to have a value either through
+    # option defaults, or being globally set it might be confusing to users. In this scenario, log out a helpful message.
+    #
+    # i.e. the scenario of a user unsetting 'RHOSTS', but the value continues to inherit from the global framework datastore.
+    unless is_all_variables
+      variable_names.each do |variable_name|
+        search_result = datastore.search_for(variable_name)
+        if search_result.fallback?
+          print_warning(
+            "Variable #{variable_name.inspect} unset - but will continue to use #{search_result.fallback_key.inspect} as a fallback preference. " \
+              "If this is not desired, either run #{Msf::Ui::Tip.highlight("set #{variable_name} new_value")} or #{Msf::Ui::Tip.highlight("unset #{search_result.fallback_key}")}"
+          )
+        elsif !global && search_result.global?
+          print_warning(
+            "Variable #{variable_name.inspect} unset - but will continue to use the globally set value as a preference. " \
+              "If this is not desired, either run #{Msf::Ui::Tip.highlight("set --clear #{variable_name}")} or #{Msf::Ui::Tip.highlight("unsetg #{variable_name}")}"
+          )
+        elsif !search_result.value.nil?
+          print_warning(
+            "Variable #{variable_name.inspect} unset - but will use a default value still. " \
+              "If this is not desired, set it to a new value or attempt to clear it with #{Msf::Ui::Tip.highlight("set --clear #{variable_name}")}"
+          )
+        end
+      end
     end
   end
 
   def cmd_unsetg_help
-    print_line "Usage: unsetg var1 [var2 ...]"
+    print_line "Usage: unsetg [options] var1 var2 var3 ..."
     print_line
     print_line "Exactly like unset -g, unset global variables, or all"
+    print @@unsetg_opts.usage
     print_line
   end
 
@@ -2066,7 +2590,7 @@ class Core
   # at least 1 when tab completion has reached this stage since the command itself has been completed
 
   def cmd_unsetg_tabs(str, words)
-    self.framework.datastore.keys
+    tab_complete_datastore_names(framework.datastore, str, words)
   end
 
   alias cmd_unsetg_help cmd_unset_help
@@ -2180,7 +2704,7 @@ class Core
     all_lines.each_with_index do |line, line_num|
       next if (output_mods[:skip] and line_num < output_mods[:skip])
       our_lines << line if (output_mods[:keep] and line_num < output_mods[:keep])
-      # we don't wan't to keep processing if we have a :max and we've reached it already (not counting skips/keeps)
+      # we don't want to keep processing if we have a :max and we've reached it already (not counting skips/keeps)
       break if match_mods[:max] and count >= match_mods[:max]
       if eval statement
         count += 1
@@ -2317,11 +2841,25 @@ class Core
   end
 
   #
+  # Custom error code to handle timeout errors
+  #
+  # @param message [String] The message to be printed when a timeout error is hit
+  # @return [Proc] proc function that prints the specified error when the error types match
+  def log_on_timeout_error(message)
+    proc do |e|
+      next unless e.is_a?(Rex::TimeoutError) || e.is_a?(Timeout::Error)
+      elog(e)
+      print_error(message)
+      :handled
+    end
+  end
+
+  #
   # Returns an array of lines at the provided line number plus any before and/or after lines requested
   # from all_lines by supplying the +before+ and/or +after+ parameters which are always positive
   #
   # @param all_lines [Array<String>] An array of all lines being considered for matching
-  # @param line_num [Integer] The line number in all_lines which has satisifed the match
+  # @param line_num [Integer] The line number in all_lines which has satisfied the match
   # @param after [Integer] The number of lines after the match line to include (should always be positive)
   # @param before [Integer] The number of lines before the match line to include (should always be positive)
   # @return [Array<String>] Array of lines including the line at line_num and any +before+ and/or +after+

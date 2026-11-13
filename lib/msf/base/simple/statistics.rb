@@ -22,67 +22,62 @@ class Statistics
   # Returns the number of encoders in the framework.
   #
   def num_encoders
-    framework.encoders.length
+    ensure_stats_loaded
+    Msf::Modules::Metadata::Cache.instance.module_counts[:encoder]
   end
 
   #
   # Returns the number of exploits in the framework.
   #
   def num_exploits
-    framework.exploits.length
+    ensure_stats_loaded
+    Msf::Modules::Metadata::Cache.instance.module_counts[:exploit]
   end
 
   #
   # Returns the number of NOP generators in the framework.
   #
   def num_nops
-    framework.nops.length
+    ensure_stats_loaded
+    Msf::Modules::Metadata::Cache.instance.module_counts[:nop]
   end
 
   #
   # Returns the number of payloads in the framework.
   #
   def num_payloads
-    framework.payloads.length
+    ensure_stats_loaded
+    Msf::Modules::Metadata::Cache.instance.module_counts[:payload]
   end
 
   #
   # Returns the number of auxiliary modules in the framework.
   #
   def num_auxiliary
-    framework.auxiliary.length
+    ensure_stats_loaded
+    Msf::Modules::Metadata::Cache.instance.module_counts[:auxiliary]
   end
 
   #
   # Returns the number of post modules in the framework.
   #
   def num_post
-    framework.post.length
+    ensure_stats_loaded
+    Msf::Modules::Metadata::Cache.instance.module_counts[:post]
   end
 
   def num_evasion
-    framework.evasion.length
+    ensure_stats_loaded
+    Msf::Modules::Metadata::Cache.instance.module_counts[:evasion]
   end
 
-  #
-  # Returns the number of stages in the framework.
-  #
-  def num_payload_stages
-    framework.payloads.stages.length
-  end
+  private
 
-  #
-  # Returns the number of stagers in the framework.
-  #
-  def num_payload_stagers
-    framework.payloads.stagers.length
-  end
-
-  #
-  # Returns the number of singles in the framework.
-  #
-  def num_payload_singles
-    framework.payloads.singles.length
+  # Defers update_stats until first access so boot doesn't pay the cost
+  # when stats aren't immediately needed (e.g. quiet mode with no banner).
+  def ensure_stats_loaded
+    cache = Msf::Modules::Metadata::Cache.instance
+    cache.update_stats unless cache.module_counts
   end
 end
 

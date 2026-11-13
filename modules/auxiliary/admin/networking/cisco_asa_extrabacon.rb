@@ -16,32 +16,32 @@ class MetasploitModule < Msf::Auxiliary
           This module patches the authentication functions of a Cisco ASA
           to allow uncredentialed logins. Uses improved shellcode for payload.
         },
-      'Author' =>
-        [
-          'Sean Dillon <sean.dillon@risksense.com>',
-          'Zachary Harding <zachary.harding@risksense.com>',
-          'Nate Caroe <nate.caroe@risksense.com>',
-          'Dylan Davis <dylan.davis@risksense.com>',
-          'William Webb <william_webb[at]rapid7.com>', # initial module and ASA hacking notes
-          'Jeff Jarmoc <jjarmoc>', # minor improvements
-          'Equation Group',
-          'Shadow Brokers'
-        ],
-      'References' =>
-        [
-          [ 'CVE', '2016-6366'],
-          [ 'URL', 'https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/cisco-sa-20160817-asa-snmp'],
-          [ 'URL', 'https://github.com/RiskSense-Ops/CVE-2016-6366'],
-        ],
+      'Author' => [
+        'Sean Dillon <sean.dillon@risksense.com>',
+        'Zachary Harding <zachary.harding@risksense.com>',
+        'Nate Caroe <nate.caroe@risksense.com>',
+        'Dylan Davis <dylan.davis@risksense.com>',
+        'William Webb <william_webb[at]rapid7.com>', # initial module and ASA hacking notes
+        'Jeff Jarmoc <jjarmoc>', # minor improvements
+        'Equation Group',
+        'Shadow Brokers'
+      ],
+      'References' => [
+        [ 'CVE', '2016-6366'],
+        [ 'URL', 'https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/cisco-sa-20160817-asa-snmp'],
+        [ 'URL', 'https://github.com/RiskSense-Ops/CVE-2016-6366'],
+      ],
       'License' => MSF_LICENSE,
-      'Actions' =>
-        [
-          ['PASS_DISABLE', { 'Description' => 'Disable password authentication.' } ],
-          ['PASS_ENABLE', { 'Description' => 'Enable password authentication.' } ]
-        ],
+      'Actions' => [
+        ['PASS_DISABLE', { 'Description' => 'Disable password authentication.' } ],
+        ['PASS_ENABLE', { 'Description' => 'Enable password authentication.' } ]
+      ],
       'DefaultAction' => 'PASS_DISABLE',
       'Notes' => {
-        'AKA' => ['EXTRABACON']
+        'AKA' => ['EXTRABACON'],
+        'Stability' => [],
+        'SideEffects' => [IOC_IN_LOGS, CONFIG_CHANGES],
+        'Reliability' => []
       }
     )
 
@@ -112,16 +112,16 @@ class MetasploitModule < Msf::Auxiliary
       vers_string = retrieve_asa_version
     rescue ::StandardError
       print_error('Error: Unable to retrieve version information')
-      return Exploit::CheckCode::Unknown
+      return Exploit::CheckCode::Unknown('Unable to retrieve version information')
     end
 
     if @offsets[vers_string]
       print_good("Payload for Cisco ASA version #{vers_string} available!")
-      return Exploit::CheckCode::Appears
+      return Exploit::CheckCode::Appears("Cisco ASA version #{vers_string} has an available payload")
     end
 
     print_warning("Received Cisco ASA version #{vers_string}, but no payload available")
-    return Exploit::CheckCode::Detected
+    return Exploit::CheckCode::Detected("Cisco ASA version #{vers_string} detected but no payload available")
   end
 
   def build_payload(vers_string, mode)

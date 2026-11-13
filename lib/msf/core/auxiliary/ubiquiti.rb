@@ -1,6 +1,5 @@
 # -*- coding: binary -*-
 
-require 'metasploit/framework/hashes/identify'
 require 'bson'
 require 'zip'
 
@@ -15,9 +14,9 @@ module Msf
 
     def decrypt_unf(contents)
       aes = OpenSSL::Cipher.new('aes-128-cbc')
+      aes.decrypt
       aes.key = 'bcyangkmluohmars' # https://github.com/zhangyoufu/unifi-backup-decrypt/blob/master/E>
       aes.padding = 0
-      aes.decrypt
       aes.iv = 'ubntenterpriseap'
       aes.update(contents)
     end
@@ -31,7 +30,7 @@ module Msf
       print_status('Attempting to repair zip file (this is normal and takes some time)')
       temp_file = Rex::Quickfile.new('fixed_zip')
       system("yes | #{zip_exe} -FF #{fname} --out #{temp_file.path}.zip > /dev/null")
-      return File.read("#{temp_file.path}.zip")
+      return File.read("#{temp_file.path}.zip", mode: 'rb')
     end
 
     def extract_and_process_db(db_path)

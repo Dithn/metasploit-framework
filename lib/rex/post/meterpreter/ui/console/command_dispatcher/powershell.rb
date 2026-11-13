@@ -98,7 +98,14 @@ class Console::CommandDispatcher::Powershell
       end
     }
 
-    channel = client.powershell.shell(opts)
+    result = client.powershell.shell(opts)
+
+    channel = result[:channel]
+
+    if result[:warning].present?
+      print_warning(result[:warning])
+    end
+
     shell.interact_with_channel(channel)
   end
 
@@ -115,6 +122,12 @@ class Console::CommandDispatcher::Powershell
     print_line('Powershell scripts can be loaded into any session (via -s).')
     print_line('.NET assemblies are applied to all sessions.')
     print_line(@@powershell_import_opts.usage)
+  end
+
+  def cmd_powershell_import_tabs(str, words)
+    if words.length == 1 # Just the command
+      tab_complete_filenames(str, words)
+    end
   end
 
   #
@@ -138,12 +151,17 @@ class Console::CommandDispatcher::Powershell
     }
 
     result = client.powershell.import_file(opts)
-    if result.nil? || result == false
-      print_error("File failed to load.")
-    elsif result == true || result.empty?
+
+    if result[:warning].present?
+      print_warning(result[:warning])
+    end
+
+    if result[:loaded] == false
+      print_error('File failed to load. The file must end in ".ps1" or ".dll".')
+    elsif result[:loaded] == true || result[:output].empty?
       print_good("File successfully imported. No result was returned.")
     else
-      print_good("File successfully imported. Result:\n#{result}")
+      print_good("File successfully imported. Result:\n#{result[:output]}")
     end
   end
 
@@ -180,7 +198,10 @@ class Console::CommandDispatcher::Powershell
     }
 
     result = client.powershell.execute_string(opts)
-    print_good("Command execution completed:\n#{result}")
+    if result[:warning].present?
+      print_warning(result[:warning])
+    end
+    print_good("Command execution completed:\n#{result[:output]}")
   end
 
 end

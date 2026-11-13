@@ -1,4 +1,3 @@
-require 'octokit'
 require 'nokogiri'
 require 'net/http'
 
@@ -38,6 +37,8 @@ module Msf
             msg = ''
             raise PullRequestFinder::Exception, 'GITHUB_OAUTH_TOKEN environment variable not set.'
           end
+
+          require 'octokit'
 
           self.owner            = 'rapid7'
           self.repository       = "#{owner}/metasploit-framework"
@@ -81,6 +82,8 @@ module Msf
             commits = git_client.commits(repository, branch, path: path)
           rescue Faraday::ConnectionFailed
             raise PullRequestFinder::Exception, 'No network connection to Github.'
+          rescue Octokit::Unauthorized
+            raise PullRequestFinder::Exception, 'Github Authentication Failed.'
           end
 
           if commits.empty?

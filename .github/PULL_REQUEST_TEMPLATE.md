@@ -1,33 +1,20 @@
-Tell us what this change does. If you're fixing a bug, please mention
-the github issue number.
+<!-- See https://github.com/rapid7/metasploit-framework/blob/master/CONTRIBUTING.md for contribution guidelines. Keep unfinished work in draft. -->
 
-Please ensure you are submitting **from a unique branch** in your [repository](https://github.com/rapid7/metasploit-framework/pull/11086#issuecomment-445506416) to master in Rapid7's.
+## Description
+
+<!-- Describe what this change does and why it is needed. Link related issues and explain breaking changes and migration steps. State any AI tools used and their role, or "None". -->
+
+## Setup and Reproduction (if applicable)
+
+<!-- Give steps to reproduce the bug or set up a test target, including exact software versions, required configuration, and how to obtain lab credentials. A link to existing instructions in an issue or module documentation is enough. Delete this section if it does not apply. -->
 
 ## Verification
 
-List the steps needed to make sure this thing works
+<!-- Replace the placeholders with steps a reviewer can follow. Add or remove steps as needed. Leave all verification checkboxes unchecked, even if you have already performed the steps; reviewers check them off as they complete them. Report your own checks under Results and evidence below. Keep the steps proportional to the change; for documentation changes, describe what to inspect or preview. -->
 
-- [ ] Start `msfconsole`
-- [ ] `use exploit/windows/smb/ms08_067_netapi`
-- [ ] ...
-- [ ] **Verify** the thing does what it should
-- [ ] **Verify** the thing does not do what it should not
-- [ ] **Document** the thing and how it works ([Example](https://github.com/rapid7/metasploit-framework/blob/master/documentation/modules/post/multi/gather/aws_keys.md))
+- [ ] Run `<command or action>` and confirm `<expected observable result>`.
+- [ ] Exercise `<relevant failure or regression case, if applicable>` and confirm `<expected result>`.
 
-If you are opening a PR for a new module that exploits a **specific** piece of hardware or requires a **complex or hard-to-find** testing environment, we recommend that you send us a demo of your module executing correctly. Seeing your module in action will help us review your PR faster!
+### Results and evidence
 
-Specific Hardware Examples:
-* Switches
-* Routers
-* IP Cameras
-* IoT devices
-
-Complex Software Examples:
-* Expensive proprietary software
-* Software with an extensive installation process
-* Software that requires exploit testing across multiple significantly different versions
-* Software without an English language UI
-
-We will also accept demonstrations of successful module execution even if your module doesn't meet the above conditions. It's not a necessity, but it may help us land your module faster!
-
-Demonstration of successful module execution can take the form of a packet capture (pcap) or a screen recording. You can send pcaps and recordings to [msfdev@metasploit.com](mailto:msfdev@metasploit.com). Please include a CVE number in the subject header (if applicable), and a link to your PR in the email body.
+<!-- Describe what you actually tested and what happened. Include sanitized console output, screenshots, or CI links. For module behavior changes, include check output (if supported) and run/exploit output. For documentation changes, a brief inspection or preview result is enough. Note anything untested. -->

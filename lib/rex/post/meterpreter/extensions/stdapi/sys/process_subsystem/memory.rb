@@ -99,19 +99,18 @@ class Memory
   #
   # Deallocate a region of memory in the context of a process.
   #
-  def free(base, length = 0)
-    return _free(base, length)
+  def free(base)
+    return _free(base)
   end
 
   #
   # Low-level memory deallocation.
   #
-  def _free(base, length)
+  def _free(base)
     request = Packet.create_request(COMMAND_ID_STDAPI_SYS_PROCESS_MEMORY_FREE)
 
     request.add_tlv(TLV_TYPE_HANDLE, process.handle)
     request.add_tlv(TLV_TYPE_BASE_ADDRESS, base)
-    request.add_tlv(TLV_TYPE_LENGTH, length)
 
     process.client.send_request(request)
 
@@ -243,7 +242,7 @@ class Memory
   end
 
   #
-  # Unloock a region of memory into physical memory so that it can be
+  # Unlock a region of memory into physical memory so that it can be
   # swapped to disk.  This can only be done in the context of the
   # process that is running the meterpreter server.  The instance's
   # handle is ignored.

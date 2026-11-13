@@ -7,7 +7,7 @@ require 'pathname'
 @framework_path = File.expand_path(File.dirname(__FILE__))
 root = Pathname.new(@framework_path).expand_path
 @framework_lib_path = root.join('lib')
-$LOAD_PATH << @framework_lib_path unless $LOAD_PATH.include?(@framework_lib_path)
+$LOAD_PATH << @framework_lib_path.to_path unless $LOAD_PATH.include?(@framework_lib_path)
 
 require 'msfenv'
 
@@ -23,6 +23,9 @@ run Msf::WebServices::JsonRpcApp
 # requests failing.
 #
 warmup do |app|
+  # Initialise DB and auth state once before the server begins accepting connections.
+  Msf::WebServices::JsonRpcApp.boot!
+
   client = Rack::MockRequest.new(app)
   response = client.get('/api/v1/health')
 

@@ -81,7 +81,18 @@ class TcpClientChannel < Rex::Post::Meterpreter::Stream
 
     unless sock_params.nil?
       @params = sock_params.merge(Socket.parameters_from_response(packet))
+      lsock.extend(Rex::Socket::SslTcp) if sock_params.ssl
     end
+
+    # synchronize access so the socket isn't closed while initializing, this is particularly important for SSL
+    lsock.synchronize_access { lsock.initsock(@params) }
+    rsock.synchronize_access { rsock.initsock(@params) }
+  end
+
+  def monitor_rsock(name = 'MonitorRemote')
+    # call #close on exit instead of #close_write because this is triggered in response to lsock.close
+    # lsock.close -> rsock EOF -> #close -> Meterpreter close
+    monitor_sock(rsock, sink: self, name: name, on_exit: method(:close))
   end
 
   #

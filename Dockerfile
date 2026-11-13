@@ -1,8 +1,10 @@
-FROM ruby:2.7.2-alpine3.12 AS builder
+FROM ruby:3.3.13-alpine3.24 AS builder
 LABEL maintainer="Rapid7"
 
-ARG BUNDLER_CONFIG_ARGS="set clean 'true' set no-cache 'true' set system 'true' set without 'development test coverage'"
+ARG BUNDLER_CONFIG_ARGS="set force_ruby_platform 'true' set no-cache 'true' set system 'true' set without 'development test coverage'"
+ARG BUNDLER_FORCE_CLEAN="true"
 ENV APP_HOME=/usr/src/metasploit-framework
+ENV TOOLS_HOME=/usr/src/tools
 ENV BUNDLE_IGNORE_MESSAGES="true"
 WORKDIR $APP_HOME
 
@@ -13,13 +15,16 @@ COPY lib/msf/util/helper.rb $APP_HOME/lib/msf/util/helper.rb
 
 RUN apk add --no-cache \
       autoconf \
+      bash \
       bison \
       build-base \
+      curl \
       ruby-dev \
       openssl-dev \
       readline-dev \
       sqlite-dev \
       postgresql-dev \
+      libffi-dev \
       libpcap-dev \
       libxml2-dev \
       libxslt-dev \
@@ -27,27 +32,48 @@ RUN apk add --no-cache \
       zlib-dev \
       ncurses-dev \
       git \
+      go \
     && echo "gem: --no-document" > /etc/gemrc \
     && gem update --system \
-    && bundle config $BUNDLER_ARGS \
+    && bundle config $BUNDLER_CONFIG_ARGS \
     && bundle install --jobs=8 \
+    && if [ "${BUNDLER_FORCE_CLEAN}" == "true" ]; then \
+         bundle clean --force; \
+       fi \
     # temp fix for https://github.com/bundler/bundler/issues/6680
     && rm -rf /usr/local/bundle/cache \
     # needed so non root users can read content of the bundle
     && chmod -R a+r /usr/local/bundle
 
+ENV GO111MODULE=off
+RUN mkdir -p $TOOLS_HOME/bin && \
+    cd $TOOLS_HOME/bin && \
+    curl -O https://dl.google.com/go/go1.27.3.src.tar.gz && \
+    tar -zxf go1.27.3.src.tar.gz && \
+    rm go1.27.3.src.tar.gz && \
+    cd go/src && \
+    ./make.bash
 
-FROM ruby:2.7.2-alpine3.12
+FROM ruby:3.3.13-alpine3.24
 LABEL maintainer="Rapid7"
+ARG TARGETARCH
 
 ENV APP_HOME=/usr/src/metasploit-framework
+ENV TOOLS_HOME=/usr/src/tools
 ENV NMAP_PRIVILEGED=""
 ENV METASPLOIT_GROUP=metasploit
 
 # used for the copy command
 RUN addgroup -S $METASPLOIT_GROUP
 
-RUN apk add --no-cache bash sqlite-libs nmap nmap-scripts nmap-nselibs postgresql-libs python2 python3 ncurses libcap su-exec alpine-sdk python2-dev openssl-dev nasm
+RUN apk add --no-cache curl bash sqlite-libs nmap nmap-scripts nmap-nselibs \
+    postgresql-libs python3 py3-pip py3-impacket py3-requests ncurses libcap su-exec alpine-sdk \
+    openssl-dev nasm
+RUN\
+    if [ "${TARGETARCH}" = "arm64" ];\
+	then apk add --no-cache gcc musl-dev python3-dev libffi-dev gcompat;\
+    else apk add --no-cache mingw-w64-gcc;\
+    fi
 
 RUN /usr/sbin/setcap cap_net_raw,cap_net_bind_service=+eip $(which ruby)
 RUN /usr/sbin/setcap cap_net_raw,cap_net_bind_service=+eip $(which nmap)
@@ -55,12 +81,24 @@ RUN /usr/sbin/setcap cap_net_raw,cap_net_bind_service=+eip $(which nmap)
 COPY --from=builder /usr/local/bundle /usr/local/bundle
 RUN chown -R root:metasploit /usr/local/bundle
 COPY . $APP_HOME/
+COPY --from=builder $TOOLS_HOME $TOOLS_HOME
 RUN chown -R root:metasploit $APP_HOME/
 RUN chmod 664 $APP_HOME/Gemfile.lock
 RUN gem update --system
 RUN cp -f $APP_HOME/docker/database.yml $APP_HOME/config/database.yml
-RUN curl -L -O https://github.com/pypa/get-pip/raw/3843bff3a0a61da5b63ea0b7d34794c5c51a2f11/get-pip.py && python get-pip.py && rm get-pip.py
-RUN pip install impacket
+
+# Refresh the Mozilla CA bundle, as the base image's copy can be months old
+RUN apk upgrade --no-cache ca-certificates-bundle
+
+# Remove distrusted CAs (eMudhra intermediate CA compromise: the eMudhra roots
+# and the Comodo/Sectigo root the compromised intermediates were cross-signed
+# under) from the system and vendored CA bundles
+RUN find /etc/ssl /usr/lib /usr/local/bundle -type f \( -name 'ca-certificates.crt' -o -name 'cacert*.pem' -o -name 'ca-bundle.crt' \) \
+      -exec ruby $APP_HOME/docker/remove_distrusted_cas.rb {} +
+
+ENV GOPATH=$TOOLS_HOME/go
+ENV GOROOT=$TOOLS_HOME/bin/go
+ENV PATH=${PATH}:${GOPATH}/bin:${GOROOT}/bin
 
 WORKDIR $APP_HOME
 

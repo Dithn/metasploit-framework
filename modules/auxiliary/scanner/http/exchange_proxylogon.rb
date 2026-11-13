@@ -32,14 +32,14 @@ class MetasploitModule < Msf::Auxiliary
           All components are vulnerable by default.
         },
         'Author' => [
-          'Orange Tsai', # Dicovery (Officially acknowledged by MSRC)
+          'Orange Tsai', # Discovery (Officially acknowledged by MSRC)
           'mekhalleh (RAMELLA Sébastien)' # Module author (Zeop Entreprise)
         ],
         'References' => [
           ['CVE', '2021-26855'],
           ['LOGO', 'https://proxylogon.com/images/logo.jpg'],
           ['URL', 'https://proxylogon.com/'],
-          ['URL', 'https://aka.ms/exchangevulns']
+          ['URL', 'https://msrc-blog.microsoft.com/2021/03/02/multiple-security-updates-released-for-exchange-server/']
         ],
         'DisclosureDate' => '2021-03-02',
         'License' => MSF_LICENSE,
@@ -48,7 +48,10 @@ class MetasploitModule < Msf::Auxiliary
           'SSL' => true
         },
         'Notes' => {
-          'AKA' => ['ProxyLogon']
+          'AKA' => ['ProxyLogon'],
+          'Stability' => [CRASH_SAFE],
+          'Reliability' => [],
+          'SideEffects' => [IOC_IN_LOGS]
         }
       )
     )
@@ -74,21 +77,21 @@ class MetasploitModule < Msf::Auxiliary
     unless received
       print_error(message('No response, target seems down.'))
 
-      return Exploit::CheckCode::Unknown
+      return Exploit::CheckCode::Unknown('No response received from the target')
     end
 
     if received && (received.code != 500 && received.code != 503)
       print_error(message('The target is not vulnerable to CVE-2021-26855.'))
       vprint_error("Obtained HTTP response code #{received.code} for #{full_uri(uri)}.")
 
-      return Exploit::CheckCode::Safe
+      return Exploit::CheckCode::Safe("HTTP #{received.code} response indicates target is not vulnerable")
     end
 
     if received.headers['X-CalculatedBETarget'] != 'localhost'
       print_error(message('The target is not vulnerable to CVE-2021-26855.'))
       vprint_error('Could\'t obtain a correct \'X-CalculatedBETarget\' in the response header.')
 
-      return Exploit::CheckCode::Safe
+      return Exploit::CheckCode::Safe('X-CalculatedBETarget header does not indicate SSRF vulnerability')
     end
 
     print_good(message('The target is vulnerable to CVE-2021-26855.'))
@@ -102,6 +105,6 @@ class MetasploitModule < Msf::Auxiliary
       info: msg
     )
 
-    Exploit::CheckCode::Vulnerable
+    Exploit::CheckCode::Vulnerable('SSRF via ProxyLogon confirmed with X-CalculatedBETarget header')
   end
 end

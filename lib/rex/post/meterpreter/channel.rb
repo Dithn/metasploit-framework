@@ -153,10 +153,20 @@ class Channel
   def self.finalize(client, cid)
     proc {
       unless cid.nil?
-        self._close(client, cid)
+        deferred_close_proc = proc do
+          begin
+            self._close(client, cid)
+          rescue => e
+            elog("finalize method for Channel failed", error: e)
+          end
+        end
+
+        # Schedule the finalizing logic out-of-band; as this logic might be called in the context of a Signal.trap, which can't synchronize mutexes
+        client.framework.sessions.schedule(deferred_close_proc)
       end
     }
   end
+
 
   ##
   #
@@ -222,7 +232,6 @@ class Channel
   # Writes data to the remote half of the channel.
   #
   def _write(buf, length = nil, addends = nil)
-
     if self.cid.nil?
       raise IOError, "Channel has been closed.", caller
     end
@@ -377,11 +386,12 @@ class Channel
   # Stub close handler.
   #
   def dio_close_handler(packet)
+    temp_cid = nil
     @mutex.synchronize {
-      cid = self.cid
+      temp_cid = self.cid
       self.cid = nil
     }
-    client.remove_channel(cid)
+    client.remove_channel(temp_cid)
 
     # Trap IOErrors as parts of the channel may have already been closed
     begin
@@ -467,4 +477,3 @@ protected
 end
 
 end; end; end
-

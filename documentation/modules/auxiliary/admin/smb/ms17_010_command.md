@@ -41,23 +41,23 @@ msf exploit(psexec) > exploit
 
 By default, using auxiliary/admin/smb/ms17_010_command can be as simple as setting the RHOSTS option, and you're ready to go.
 
-**The NAMEDPIPE Option**
+### The NAMEDPIPE Option
 
 By default, the module will scan for a list of common pipes for any available one. You can specify one by name.
 
-**The LEAKATTEMPTS Option**
+### The LEAKATTEMPTS Option
 
 Information leaks are used to ensure stability of the exploit. Sometimes they don't pop on the first try.
 
-**The DBGTRACE Option**
+### The DBGTRACE Option
 
 Used to debug, gives extremely verbose information.
 
-**The SMBUser Option**
+### The SMBUser Option
 
 This is a valid Windows username.
 
-**The SMBPass option**
+### The SMBPass option
 
 This can be either the plain text version or the Windows hash.
 
@@ -65,7 +65,7 @@ This can be either the plain text version or the Windows hash.
 
 **Automatic Target**
 
-There are multiple targets available for exploit/windows/smb/psexec. The Automatic target is the default target. If the  Automatic target detects Powershell on the remote machine, it will try Powershell, otherwise it uses the natvie upload. Each target is explained below.
+There are multiple targets available for exploit/windows/smb/psexec. The Automatic target is the default target. If the  Automatic target detects Powershell on the remote machine, it will try Powershell, otherwise it uses the native upload. Each target is explained below.
 
 **Powershell Target**
 
@@ -82,7 +82,7 @@ This approach is generally reliable, but has a high chance of getting caught by 
 
 **MOF Upload Target**
 
-The [MOF](https://github.com/rapid7/metasploit-framework/wiki/How-to-use-WbemExec-for-a-write-privilege-attack-on-Windows) target technically does not use psexec; it does not explicitly tell Windows to execute anything. All it does is upload two files: the payload (exe) in SYSTEM32 and a managed object
+The [MOF](https://docs.metasploit.com/docs/development/developing-modules/libraries/how-to-use-wbemexec-for-a-write-privilege-attack-on-windows.html) target technically does not use psexec; it does not explicitly tell Windows to execute anything. All it does is upload two files: the payload (exe) in SYSTEM32 and a managed object
 format file in SYSTEM32\wbem\mof\ directory. When Windows sees the MOF file in that directory, it automatically runs it. Once executed, the code inside the MOF file basically tells Windows to execute our payload in SYSTEM32, and you get a session.
 
 Although it's a neat trick, Metasploit's MOF library only works against Windows XP and Windows Server 2003. And since it writes files to disk, there is also a high chance of getting

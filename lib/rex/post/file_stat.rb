@@ -73,7 +73,7 @@ class FileStat
   end
 
   def update(buf)
-    skeys = %W{st_dev st_mode st_nlink st_uid st_gid st_rdev st_ino st_size st_ctime st_atime st_mtime}
+    skeys = %W{st_dev st_mode st_nlink st_uid st_gid st_rdev st_ino st_size st_atime st_mtime st_ctime}
     svals = buf.unpack("VVVVVVQQQQQ")
     skeys.each_index do |i|
       self.stathash[ skeys[i] ] = svals[i]
@@ -149,7 +149,7 @@ class FileStat
   # S_IXGRP    00010     group has execute permission
   # S_IRWXO    00007     mask for permissions for others (not in group)
   # S_IROTH    00004     others have read permission
-  # S_IWOTH    00002     others have write permisson
+  # S_IWOTH    00002     others have write permission
   # S_IXOTH    00001     others have execute permission
   #
 
@@ -198,7 +198,7 @@ class FileStat
   #
   def prettymode
     m  = mode
-    om = '%04o' % m
+    om = '%06o' % m
     perms = ''
 
     3.times {

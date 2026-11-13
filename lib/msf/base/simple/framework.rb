@@ -47,7 +47,7 @@ module Framework
   # Simplifies module instances when they're created.
   #
   def on_module_created(instance)
-    Msf::Simple::Framework.simplify_module(instance)
+    Msf::Simple::Framework.simplify_module(instance, load_saved_config: true)
   end
 
   ModuleSimplifiers =
@@ -120,9 +120,7 @@ module Framework
     # instance
     framework.events.add_general_subscriber(framework)
 
-    unless opts['DeferModuleLoads']
-      framework.init_module_paths
-    end
+    framework.init_module_paths(defer_module_loads: opts['DeferModuleLoads'])
 
     return framework
   end
@@ -131,7 +129,7 @@ module Framework
   # Simplifies a module instance if the type is supported by extending it
   # with the simplified module interface.
   #
-  def self.simplify_module(instance, load_saved_config = true)
+  def self.simplify_module(instance, load_saved_config: false)
     if ((ModuleSimplifiers[instance.type]) and
         (instance.class.include?(ModuleSimplifiers[instance.type]) == false))
       instance.extend(ModuleSimplifiers[instance.type])
@@ -195,4 +193,3 @@ end
 
 end
 end
-

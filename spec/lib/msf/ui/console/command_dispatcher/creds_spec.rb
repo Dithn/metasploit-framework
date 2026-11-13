@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 require 'spec_helper'
 
-
 RSpec.describe Msf::Ui::Console::CommandDispatcher::Creds do
 
   if ENV['REMOTE_DB']
@@ -18,6 +17,14 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Creds do
   it { is_expected.to respond_to :active? }
   it { is_expected.to respond_to :creds_add }
   it { is_expected.to respond_to :creds_search }
+
+  before(:each) do
+    # Replace the incremental database ID to ensure deterministic tests
+    allow_any_instance_of(Rex::Text::WrappedTable).to receive(:<<).and_wrap_original do |original, row|
+      row_without_id = ['id'] + row.dup[1..]
+      original.call row_without_id
+    end
+  end
 
   describe '#cmd_creds' do
     let(:username)            { 'thisuser' }
@@ -67,52 +74,55 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Creds do
         context 'when the credential is present' do
           it 'should show a user that matches the given expression' do
             creds.cmd_creds('-u', username)
-            expect(@output).to eq([
-              'Credentials',
-              '===========',
-              '',
-              'host  origin  service  public    private   realm  private_type  JtR Format',
-              '----  ------  -------  ------    -------   -----  ------------  ----------',
-              '                       thisuser  thispass         Password      '
-            ])
+            expect(@output.join("\n")).to match_table <<~TABLE
+              Credentials
+              ===========
+
+              id  host  origin  service  public    private   realm  private_type  JtR Format  cracked_password
+              --  ----  ------  -------  ------    -------   -----  ------------  ----------  ----------------
+              id                         thisuser  thispass         Password
+
+            TABLE
           end
 
           it 'should not match a regular expression' do
             creds.cmd_creds('-u', "^#{username}$")
-            expect(@output).to_not eq([
-              'Credentials',
-              '===========',
-              '',
-              'host  origin  service  public    private   realm  private_type  JtR Format',
-              '----  ------  -------  ------    -------   -----  ------------  ----------',
-              '                       thisuser  thispass         Password      '
-            ])
+            expect(@output.join("\n")).to match_table <<~TABLE
+              Credentials
+              ===========
+
+              id  host  origin  service  public  private  realm  private_type  JtR Format  cracked_password
+              --  ----  ------  -------  ------  -------  -----  ------------  ----------  ----------------
+
+            TABLE
           end
 
           context 'and when the username is blank' do
             it 'should show a user that matches the given expression' do
               creds.cmd_creds('-u', blank_username)
-              expect(@output).to eq([
-                'Credentials',
-                '===========',
-                '',
-                'host  origin  service  public  private        realm  private_type  JtR Format',
-                '----  ------  -------  ------  -------        -----  ------------  ----------',
-                '                               nonblank_pass         Password      '
-              ])
+              expect(@output.join("\n")).to match_table <<~TABLE
+                Credentials
+                ===========
+
+                id  host  origin  service  public  private        realm  private_type  JtR Format  cracked_password
+                --  ----  ------  -------  ------  -------        -----  ------------  ----------  ----------------
+                id                                 nonblank_pass         Password
+
+              TABLE
             end
           end
           context 'and when the password is blank' do
             it 'should show a user that matches the given expression' do
               creds.cmd_creds('-P', blank_password)
-              expect(@output).to eq([
-                'Credentials',
-                '===========',
-                '',
-                'host  origin  service  public         private  realm  private_type  JtR Format',
-                '----  ------  -------  ------         -------  -----  ------------  ----------',
-                '                       nonblank_user                  Password      '
-              ])
+              expect(@output.join("\n")).to match_table <<~TABLE
+                Credentials
+                ===========
+
+                id  host  origin  service  public         private  realm  private_type  JtR Format  cracked_password
+                --  ----  ------  -------  ------         -------  -----  ------------  ----------  ----------------
+                id                         nonblank_user                  Password
+
+              TABLE
             end
           end
         end
@@ -121,25 +131,65 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Creds do
           context 'due to a nonmatching username' do
             it 'should return a blank set' do
               creds.cmd_creds('-u', nomatch_username)
-              expect(@output).to eq([
-                'Credentials',
-                '===========',
-                '',
-                'host  origin  service  public  private  realm  private_type  JtR Format',
-                '----  ------  -------  ------  -------  -----  ------------  ----------'
-              ])
+              expect(@output.join("\n")).to match_table <<~TABLE
+                Credentials
+                ===========
+
+                id  host  origin  service  public  private  realm  private_type  JtR Format  cracked_password
+                --  ----  ------  -------  ------  -------  -----  ------------  ----------  ----------------
+
+              TABLE
             end
           end
           context 'due to a nonmatching password' do
             it 'should return a blank set' do
               creds.cmd_creds('-P', nomatch_password)
-              expect(@output).to eq([
-                'Credentials',
-                '===========',
-                '',
-                'host  origin  service  public  private  realm  private_type  JtR Format',
-                '----  ------  -------  ------  -------  -----  ------------  ----------'
-              ])
+              expect(@output.join("\n")).to match_table <<~TABLE
+                Credentials
+                ===========
+
+                id  host  origin  service  public  private  realm  private_type  JtR Format  cracked_password
+                --  ----  ------  -------  ------  -------  -----  ------------  ----------  ----------------
+
+              TABLE
+            end
+          end
+          context 'showing new column of cracked_password for all the cracked passwords' do
+            it 'should show the cracked password in the new column named cracked_passwords' do
+              common_public = FactoryBot.create(:metasploit_credential_username, username: "this_username")
+              core = FactoryBot.create(:metasploit_credential_core,
+                origin: FactoryBot.create(:metasploit_credential_origin_import),
+                private: FactoryBot.create(:metasploit_credential_nonreplayable_hash, data: "some_hash"),
+                public: common_public,
+                realm: nil,
+                workspace: framework.db.workspace)
+              cracked_core = FactoryBot.create(:metasploit_credential_core,
+                origin: Metasploit::Credential::Origin::CrackedPassword.create!(metasploit_credential_core_id: core.id),
+                private: FactoryBot.create(:metasploit_credential_password, data: "this_cracked_password"),
+                public: common_public,
+                realm: nil,
+                workspace: framework.db.workspace)
+              creds.cmd_creds('-u', 'this_username')
+              expect(@output.join("\n")).to match_table <<~TABLE
+                Credentials
+                ===========
+
+                id  host  origin  service  public         private    realm  private_type        JtR Format  cracked_password
+                --  ----  ------  -------  ------         -------    -----  ------------        ----------  ----------------
+                id                         this_username  some_hash         Nonreplayable hash              this_cracked_password
+              TABLE
+            end
+            it "should show the user given passwords on private column instead of cracked_password column" do
+              creds.cmd_creds('-u', 'thisuser')
+              expect(@output.join("\n")).to match_table <<~TABLE
+                Credentials
+                ===========
+
+                id  host  origin  service  public    private   realm  private_type  JtR Format  cracked_password
+                --  ----  ------  -------  ------    -------   -----  ------------  ----------  ----------------
+                id                         thisuser  thispass         Password
+
+              TABLE
             end
           end
         end
@@ -149,9 +199,9 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Creds do
         context 'with an invalid type' do
           it 'should print the list of valid types' do
             creds.cmd_creds('-t', 'asdf')
-            expect(@error).to match_array [
-              'Unrecognized credential type asdf -- must be one of password,ntlm,hash'
-            ]
+            expect(@error.first).to start_with(
+              'Unrecognized credential type asdf -- must be one of password,ntlm,hash,'
+            )
           end
         end
 
@@ -170,63 +220,137 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Creds do
                                realm: nil,
                                workspace: framework.db.workspace)
           end
+          let!(:pkcs12_subject) { '/C=FR/O=MyOrg/OU=MyUnit/CN=SubjectTestName' }
+          let!(:pkcs12_issuer) { '/C=US/O=MyIssuer/OU=MyIssuerUnit/CN=IssuerTestName' }
+          let!(:pkcs12_ca) { 'testCA' }
+          let!(:pkcs12_adcs_template) { 'TestTemplate' }
+          let!(:pkcs12_core) do
+            priv = FactoryBot.create(:metasploit_credential_pkcs12_with_ca_and_adcs_template,
+                                     subject: pkcs12_subject,
+                                     issuer: pkcs12_issuer,
+                                     adcs_ca: pkcs12_ca,
+                                     adcs_template: pkcs12_adcs_template)
+            FactoryBot.create(:metasploit_credential_core,
+                               origin: FactoryBot.create(:metasploit_credential_origin_import),
+                               private: priv,
+                               public: nil,
+                               realm: nil,
+                               workspace: framework.db.workspace)
+          end
 
-          #         # Somehow this is hitting a unique constraint on Cores with the same
-          #         # Public, even though it has a different Private. Skip for now
-          #         let!(:ntlm_core) do
-          #           priv = FactoryBot.create(:metasploit_credential_ntlm_hash, data: ntlm_hash)
-          #           FactoryBot.create(:metasploit_credential_core,
-          #                              origin: FactoryBot.create(:metasploit_credential_origin_import),
-          #                              private: priv,
-          #                              public: pub,
-          #                              realm: nil,
-          #                              workspace: framework.db.workspace)
-          #         end
-          #         let!(:nonreplayable_core) do
-          #           priv = FactoryBot.create(:metasploit_credential_nonreplayable_hash, data: 'asdf')
-          #           FactoryBot.create(:metasploit_credential_core,
-          #                              origin: FactoryBot.create(:metasploit_credential_origin_import),
-          #                              private: priv,
-          #                              public: pub,
-          #                              realm: nil,
-          #                              workspace: framework.db.workspace)
-          #         end
+          let!(:ntlm_core) do
+            priv = FactoryBot.create(:metasploit_credential_ntlm_hash, data: ntlm_hash)
+            FactoryBot.create(:metasploit_credential_core,
+                               origin: FactoryBot.create(:metasploit_credential_origin_import),
+                               private: priv,
+                               public: pub,
+                               realm: nil,
+                               workspace: framework.db.workspace)
+          end
+          let!(:nonreplayable_core) do
+            priv = FactoryBot.create(:metasploit_credential_nonreplayable_hash, data: 'asdf')
+            FactoryBot.create(:metasploit_credential_core,
+                               origin: FactoryBot.create(:metasploit_credential_origin_import),
+                               private: priv,
+                               public: pub,
+                               realm: nil,
+                               workspace: framework.db.workspace)
+          end
 
           after(:example) do
-            # ntlm_core.destroy
+            ntlm_core.destroy
             password_core.destroy
-            # nonreplayable_core.destroy
+            nonreplayable_core.destroy
+            pkcs12_core.destroy
           end
 
           context 'password' do
             it 'should show just the password' do
               creds.cmd_creds('-t', 'password')
-              # Table matching really sucks
-              expect(@output).to eq([
-                'Credentials',
-                '===========',
-                '',
-                'host  origin  service  public    private   realm  private_type  JtR Format',
-                '----  ------  -------  ------    -------   -----  ------------  ----------',
-                '                       thisuser  thispass         Password      '
-              ])
+              expect(@output.join("\n")).to match_table <<~TABLE
+                Credentials
+                ===========
+
+                id  host  origin  service  public    private   realm  private_type  JtR Format  cracked_password
+                --  ----  ------  -------  ------    -------   -----  ------------  ----------  ----------------
+                id                         thisuser  thispass         Password
+
+              TABLE
+            end
+            it 'should show all the cores whose private is either password or the private is cracked password' do
+              common_public = FactoryBot.create(:metasploit_credential_username, username: "this_username")
+              core = FactoryBot.create(:metasploit_credential_core,
+                origin: FactoryBot.create(:metasploit_credential_origin_import),
+                private: FactoryBot.create(:metasploit_credential_nonreplayable_hash, data: "some_hash"),
+                public: common_public,
+                realm: nil,
+                workspace: framework.db.workspace)
+              cracked_core = FactoryBot.create(:metasploit_credential_core,
+                origin: Metasploit::Credential::Origin::CrackedPassword.create!(metasploit_credential_core_id: core.id),
+                private: FactoryBot.create(:metasploit_credential_password, data: "this_cracked_password"),
+                public: common_public,
+                realm: nil,
+                workspace: framework.db.workspace)
+              creds.cmd_creds('-t', 'password')
+              expect(@output.join("\n")).to match_table <<~TABLE
+                Credentials
+                ===========
+
+                id  host  origin  service  public         private                realm  private_type  JtR Format  cracked_password
+                --  ----  ------  -------  ------         -------                -----  ------------  ----------  ----------------
+                id                         thisuser       thispass                      Password
+                id                         this_username  this_cracked_password         Password
+
+              TABLE
             end
           end
 
           context 'ntlm' do
             it 'should show just the ntlm' do
-              skip 'Weird uniqueness constraint on Core (workspace_id, public_id)'
 
               creds.cmd_creds('-t', 'ntlm')
-              # Table matching really sucks
-              expect(@output).to =~ [
-                'Credentials',
-                '===========',
-                '',
-                'host  service  public    private                                                            realm  private_type  JtR Format',
-                '----  -------  ------    -------                                                            -----  ------------  ----------',
-                "               thisuser  #{ntlm_hash}         NTLM hash"
-              ]
+              expect(@output.join("\n")).to match_table <<~TABLE
+                Credentials
+                ===========
+
+                id  host  origin  service  public    private                                                            realm  private_type  JtR Format  cracked_password
+                --  ----  ------  -------  ------    -------                                                            -----  ------------  ----------  ----------------
+                id                         thisuser  1443d06412d8c0e6e72c57ef50f76a05:27c433245e4763d074d30a05aae0af2c         NTLM hash
+
+              TABLE
+            end
+          end
+
+          context 'nonreplayable' do
+            it 'should show just the ntlm' do
+
+              creds.cmd_creds('-t', 'hash')
+              expect(@output.join("\n")).to match_table <<~TABLE
+                Credentials
+                ===========
+
+                id  host  origin  service  public    private  realm  private_type        JtR Format  cracked_password
+                --  ----  ------  -------  ------    -------  -----  ------------        ----------  ----------------
+                id                         thisuser  asdf            Nonreplayable hash
+
+              TABLE
+            end
+          end
+
+          context 'pkcs12' do
+            it 'should show just the pkcs12' do
+              private_str = "subject:#{pkcs12_subject},issuer:#{pkcs12_issuer},ADCS CA:#{pkcs12_ca},ADCS template:#{pkcs12_adcs_template}"
+              private_str = "#{private_str[0,76]} (TRUNCATED)"
+              creds.cmd_creds('-t', 'pkcs12')
+              expect(@output.join("\n")).to match_table <<~TABLE
+                Credentials
+                ===========
+
+                id  host  origin  service  public  private                                                                                   realm  private_type  JtR Format  cracked_password
+                --  ----  ------  -------  ------  -------                                                                                   -----  ------------  ----------  ----------------
+                id                                 #{private_str}         Pkcs12 (pfx)
+
+              TABLE
             end
           end
         end
@@ -411,6 +535,65 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Creds do
               }.to_not change { Metasploit::Credential::Core.count }
             end
           end
+          context 'pkcs12' do
+            let(:priv) { FactoryBot.build(:metasploit_credential_pkcs12) }
+            before(:each) do
+              @file = Tempfile.new('mypkcs12.pfx')
+              @file.write(Base64.strict_decode64(priv.data))
+              @file.close
+            end
+            it 'creates a core if one does not exist' do
+              expect {
+                creds.cmd_creds('add', "pkcs12:#{@file.path}")
+              }.to change { Metasploit::Credential::Core.count }.by 1
+            end
+            it 'does not create a core if it already exists' do
+              FactoryBot.create(:metasploit_credential_core,
+                origin: FactoryBot.create(:metasploit_credential_origin_import),
+                private: priv,
+                public: nil,
+                realm: nil,
+                workspace: framework.db.workspace)
+              expect {
+                creds.cmd_creds('add', "pkcs12:#{@file.path}")
+              }.to_not change { Metasploit::Credential::Core.count }
+            end
+
+            context 'with a password' do
+              let(:pkcs12_password) { 'mypass' }
+              let(:priv) {
+                FactoryBot.build(:metasploit_credential_pkcs12,
+                  pkcs12_password: pkcs12_password,
+                  metadata: { pkcs12_password: pkcs12_password }
+                )
+              }
+
+              it 'creates a core if the password is correct' do
+                expect {
+                  creds.cmd_creds('add', "pkcs12:#{@file.path}", "pkcs12-password:#{pkcs12_password}")
+                }.to change { Metasploit::Credential::Core.count }.by 1
+              end
+
+              it 'does not creates a core if the password is incorrect' do
+                expect {
+                  creds.cmd_creds('add', "pkcs12:#{@file.path}", "pkcs12-password:wrongpass")
+                }.to_not change { Metasploit::Credential::Core.count }
+              end
+            end
+
+            context 'with metadata other than password' do
+              let(:adcs_ca) { 'myca' }
+              let(:adcs_template) { 'mytemplate' }
+
+              it 'creates a core if the password is correct' do
+                expect {
+                  creds.cmd_creds('add', "pkcs12:#{@file.path}", "adcs-ca:#{adcs_ca}", "adcs-template:#{adcs_template}")
+                }.to change { Metasploit::Credential::Core.count }.by 1
+                expect(Metasploit::Credential::Pkcs12.first.adcs_ca).to eq(adcs_ca)
+                expect(Metasploit::Credential::Pkcs12.first.adcs_template).to eq(adcs_template)
+              end
+            end
+          end
         end
         context 'realm-types' do
           Metasploit::Model::Realm::Key::SHORT_NAMES.each do |short_name, long_name|
@@ -460,8 +643,6 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Creds do
             expect { create_core_with_login }.to change { Mdm::Host.count }.by 1
           end
         end
-
-
       end
     end
   end

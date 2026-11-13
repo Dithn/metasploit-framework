@@ -11,7 +11,7 @@ module Ssl
       opts[:loc] ||= Faker::Address.city
       opts[:org] ||= Faker::Company.name
       opts[:ou] ||= Faker::Hacker.send(%w{noun verb adjective}.sample.to_sym).gsub(/\W+/,'.')
-      opts[:cn] ||= opts[:org].downcase.gsub(/and/,'').gsub(/\W+/,'.') + '.' +  Faker::Internet.domain_suffix
+      opts[:cn] ||= opts[:org].downcase.gsub('and','').gsub(/\W+/,'.') + '.' +  Faker::Internet.domain_suffix
       opts[:email] ||= "#{opts[:ou]}@#{opts[:cn]}"
       opts
     end
@@ -90,7 +90,7 @@ module Ssl
         cert.extensions << ef.create_extension("extendedKeyUsage", ekuse)
       end
 
-      cert.sign(key, OpenSSL::Digest::SHA256.new)
+      cert.sign(key, OpenSSL::Digest.new('SHA256'))
 
       [key, cert, nil]
     end

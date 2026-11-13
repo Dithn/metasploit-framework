@@ -10,6 +10,35 @@ module Metasploit
         DEFAULT_PORT    = 80
         PRIVATE_TYPES   = [ :password ]
 
+        # Checks if the target is a GitLab instance
+        #
+        # @return [false] if the target looks like GitLab
+        # @return [String] a human-readable error message if it doesn't
+        def check_setup
+          res = send_request(
+            'method' => 'GET',
+            'cookie' => 'request_method=GET',
+            'uri'    => uri
+          )
+
+          return 'Unable to connect to the GitLab login page' unless res
+          return 'Unable to locate GitLab login page (Is this really GitLab?)' unless res.code == 200 && (res.body.include?('user[email]') || res.body.include?('user[login]'))
+
+          if res.body.include?('user[email]')
+            framework_module&.vprint_status('GitLab v5 login page')
+          elsif res.body.include?('user[login]')
+            framework_module&.vprint_status('GitLab v7 login page')
+          end
+
+          report_service(service_opts)
+
+          false
+        end
+
+        def service_opts
+          build_service_opts('gitlab')
+        end
+
         # (see Base#set_sane_defaults)
         def set_sane_defaults
           self.uri = '/users/sign_in' if uri.nil?
@@ -21,34 +50,15 @@ module Metasploit
         def attempt_login(credential)
           result_opts = {
             credential: credential,
-            host: host,
-            port: port,
-            protocol: 'tcp',
-            service_name: ssl ? 'https' : 'http'
+            **service_as_result(service_opts)
           }
           begin
-            cli = Rex::Proto::Http::Client.new(host,
-                                               port,
-                                               {
-                                                 'Msf' => framework,
-                                                 'MsfExploit' => framework_module
-                                               },
-                                               ssl,
-                                               ssl_version,
-                                               proxies,
-                                               http_username,
-                                               http_password)
-            configure_http_client(cli)
-            cli.connect
-
             # Get a valid session cookie and authenticity_token for the next step
-            req = cli.request_cgi(
+            res = send_request(
               'method' => 'GET',
               'cookie' => 'request_method=GET',
               'uri'    => uri
             )
-
-            res = cli.send_recv(req)
 
             if res.body.include? 'user[email]'
               user_field = 'user[email]'
@@ -62,14 +72,14 @@ module Metasploit
             auth_token = res.body.scan(/<input name="authenticity_token" type="hidden" value="(.*?)"/).flatten[0]
 
             # New versions of GitLab use an alternative scheme
-            # Try it, if the old one was not successfull
+            # Try it, if the old one was not successful
             auth_token = res.body.scan(/<input type="hidden" name="authenticity_token" value="(.*?)"/).flatten[0] unless auth_token
 
             fail RuntimeError, 'Unable to get Session Cookie' unless local_session_cookie
             fail RuntimeError, 'Unable to get Authentication Token' unless auth_token
 
             # Perform the actual login
-            req = cli.request_cgi(
+            res = send_request(
                                     'method' => 'POST',
                                     'cookie' => local_session_cookie,
                                     'uri'    => uri,
@@ -83,7 +93,6 @@ module Metasploit
                                       }
             )
 
-            res = cli.send_recv(req)
             if res && res.code == 302
               result_opts.merge!(status: Metasploit::Model::Login::Status::SUCCESSFUL, proof: res.headers)
             else
@@ -91,10 +100,12 @@ module Metasploit
             end
           rescue ::EOFError, Errno::ETIMEDOUT ,Errno::ECONNRESET, Rex::ConnectionError, OpenSSL::SSL::SSLError, ::Timeout::Error => e
             result_opts.merge!(status: Metasploit::Model::Login::Status::UNABLE_TO_CONNECT, proof: e)
-          ensure
-            cli.close
           end
           Result.new(result_opts)
+        end
+
+        def service_opts
+          build_service_opts('gitlab')
         end
       end
     end

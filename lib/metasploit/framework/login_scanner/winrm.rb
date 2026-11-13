@@ -2,6 +2,7 @@
 require 'metasploit/framework/login_scanner/base'
 require 'metasploit/framework/login_scanner/rex_socket'
 require 'metasploit/framework/login_scanner/http'
+require 'metasploit/framework/login_scanner/kerberos'
 
 module Metasploit
   module Framework
@@ -52,7 +53,12 @@ module Metasploit
         def send_request(opts)
           allowed_auth_methods = parse_auth_methods(super(opts.merge({ 'authenticate' => false })))
 
-          if allowed_auth_methods.include? 'Negotiate'
+          if kerberos_authenticator_factory != nil
+            unless allowed_auth_methods.include? 'Kerberos'
+              raise RuntimeError, "Kerberos requested, but not available"
+            end
+            opts['preferred_auth'] = 'Kerberos'
+          elsif allowed_auth_methods.include? 'Negotiate'
             opts['preferred_auth'] = 'Negotiate'
           elsif allowed_auth_methods.include? 'Basic'
             # Straight up hack since if Basic auth is used winrm complains about the content size being 0

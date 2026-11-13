@@ -12,15 +12,15 @@ This module enumerates ways to decrypt a Bitlocker volume and if a recovery key 
 
 ## Options
 
-  **DRIVE_LETTER**
+### DRIVE_LETTER
 
   Dump information from the DRIVE_LETTER encrypted with Bitlocker.
 
-  **RECOVERY_KEY**
+### RECOVERY_KEY
 
   Use the recovery key provided to decrypt the Bitlocker master key (FVEK).
 
-  **SESSION**
+### SESSION
 
   The session to run this module on.
 
@@ -38,7 +38,7 @@ This module enumerates ways to decrypt a Bitlocker volume and if a recovery key 
     DRIVE_LETTER => c
   msf post(windows/gather/bitlocker_fvek) > run
 
-    [+] Successfuly opened Disk 0
+    [+] Successfully opened Disk 0
     [*] Trying to gather a recovery key
     [+] Recovery key found : 579744-627517-149402-208362-055022-542289-041470-364089
     [*] The recovery key derivation usually take 20 seconds...

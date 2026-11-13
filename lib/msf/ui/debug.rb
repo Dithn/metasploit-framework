@@ -87,6 +87,8 @@ module Msf
 
       PREMABLE
 
+      ERROR_BLURB = 'An error occurred when trying to build this section:'
+
       def self.issue_link
         return ISSUE_LINK.dup
       end
@@ -98,6 +100,8 @@ module Msf
       def self.all(framework, driver)
         all_information = preamble
         all_information << datastore(framework, driver)
+        all_information << database_configuration(framework)
+        all_information << framework_config(framework)
         all_information << history(driver)
         all_information << errors
         all_information << logs
@@ -119,11 +123,11 @@ module Msf
         end
 
         # Retrieve and add more up to date information
-        add_hash_to_ini_group(ini, framework.datastore, driver.get_config_core)
+        add_hash_to_ini_group(ini, framework.datastore.to_h, driver.get_config_core)
         add_hash_to_ini_group(ini, driver.get_config, driver.get_config_group)
 
         if driver.active_module
-          add_hash_to_ini_group(ini, driver.active_module.datastore.dup, driver.active_module.refname)
+          add_hash_to_ini_group(ini, driver.active_module.datastore.to_h, driver.active_module.refname)
         end
 
         # Filter credentials
@@ -145,7 +149,74 @@ module Msf
           content
         )
       rescue StandardError => e
-        section_build_error('Failed to extract Datastore', e)
+        build_section(
+          'Module/Datastore',
+          ERROR_BLURB,
+          section_build_error('Failed to extract Datastore', e)
+        )
+      end
+
+      def self.database_configuration(framework)
+        output = "```\nSession Type: #{db_connection_info(framework)}\n```\n\n"
+
+        if framework.db&.active
+          current_workspace = framework.db.workspace
+          example_workspaces = ::Mdm::Workspace.order(id: :desc).take(10)
+          ordered_workspaces = ([current_workspace] + example_workspaces).uniq.sort_by(&:id)
+          workspace_rows = ordered_workspaces.map do |workspace|
+            id = current_workspace.id == workspace.id ? "#{workspace.id.to_fs(:delimited)} **(Current)**" : workspace.id.to_fs(:delimited)
+            [
+              id,
+              workspace.hosts.count.to_fs(:delimited),
+              workspace.vulns.count.to_fs(:delimited),
+              workspace.notes.count.to_fs(:delimited),
+              workspace.services.count.to_fs(:delimited)
+            ]
+          end
+
+          totals_row = [
+            "**Total (#{::Mdm::Workspace.count.to_fs(:delimited)})**",
+            "**#{::Mdm::Host.count.to_fs(:delimited)}**",
+            "**#{::Mdm::Vuln.count.to_fs(:delimited)}**",
+            "**#{::Mdm::Note.count.to_fs(:delimited)}**",
+            "**#{::Mdm::Service.count.to_fs(:delimited)}**"
+          ]
+
+          table = "| ID | Hosts | Vulnerabilities | Notes | Services |\n"
+          table += "|-:|-:|-:|-:|-:|\n"
+          table += (workspace_rows + [totals_row]).map { |x| "| #{x.join(" | ")} |" }.join("\n")
+          output += table
+        end
+
+        # The markdown table can't be placed in a code block or it will not render as a table.
+        build_section_no_block(
+          'Database Configuration',
+          'The database contains the following information:',
+          output
+        )
+      rescue StandardError => e
+        build_section(
+          'Database Configuration',
+          ERROR_BLURB,
+          section_build_error('Failed to extract Database configuration', e)
+        )
+      end
+
+      def self.framework_config(framework)
+        required_features = framework.features.all.map { |feature| [feature[:name], feature[:enabled].to_s] }
+        markdown_formatted_features = required_features.map { |feature| "| #{feature.join(' | ')} |" }
+        required_fields = %w[name enabled]
+
+        table = "| #{required_fields.join(' | ')} |\n"
+        table += '|' + '-:|' * required_fields.count + "\n"
+        table += markdown_formatted_features.join("\n").to_s
+
+        # The markdown table can't be placed in a code block or it will not render as a table.
+        build_section_no_block(
+          'Framework Configuration',
+          'The features are configured as follows:',
+          table
+        )
       end
 
       def self.history(driver)
@@ -165,7 +236,11 @@ module Msf
           commands
         )
       rescue StandardError => e
-        section_build_error('Failed to extract History', e)
+        build_section(
+          'History',
+          ERROR_BLURB,
+          section_build_error('Failed to extract History', e)
+        )
       end
 
       def self.errors
@@ -201,6 +276,7 @@ module Msf
         str = <<~VERSIONS
           Framework: #{framework.version}
           Ruby: #{RUBY_DESCRIPTION}
+          OpenSSL: #{OpenSSL::OPENSSL_VERSION}
           Install Root: #{Msf::Config.install_root}
           Session Type: #{db_connection_info(framework)}
           Install Method: #{installation_method}
@@ -208,7 +284,11 @@ module Msf
 
         build_section('Version/Install', 'The versions and install method of your Metasploit setup:', str)
       rescue StandardError => e
-        section_build_error('Failed to extract Versions', e)
+        build_section(
+          'Version/Install',
+          ERROR_BLURB,
+          section_build_error('Failed to extract Versions', e)
+        )
       end
 
       class << self
@@ -248,7 +328,11 @@ module Msf
             str
           )
         rescue StandardError => e
-          section_build_error("Failed to extract matches from #{path.basename}", e)
+          build_section(
+            header_name,
+            ERROR_BLURB,
+            section_build_error("Failed to extract matches from #{path.basename}", e)
+          )
         end
 
         def build_file_section(path, line_total, header_name, blurb)
@@ -272,7 +356,11 @@ module Msf
             str
           )
         rescue StandardError => e
-          section_build_error("Failed to extract contents of #{path.basename.to_s}", e)
+          build_section(
+            header_name,
+            ERROR_BLURB,
+            section_build_error("Failed to extract contents of #{path.basename.to_s}", e)
+          )
         end
 
         def add_hash_to_ini_group(ini, hash, group_name)
@@ -345,6 +433,28 @@ module Msf
 
             </details>
           WRAPPER
+        end
+
+        def with_collapsible_wrapper_no_block(content)
+          <<~WRAPPER
+            <details>
+            <summary>Collapse</summary>
+
+            #{content}
+
+            </details>
+          WRAPPER
+        end
+
+        # Useful for building tables or other content that can't be placed inside a code block.
+        def build_section_no_block(header_name, blurb, content)
+          <<~SECTION
+            ##  %grn#{header_name.strip}%clr
+
+            #{blurb.strip}
+            #{with_collapsible_wrapper_no_block(content.strip)}
+
+          SECTION
         end
 
         def installation_method

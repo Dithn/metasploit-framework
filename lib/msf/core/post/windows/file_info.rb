@@ -12,7 +12,8 @@ module FileInfo
         'Compat' => {
           'Meterpreter' => {
             'Commands' => %w[
-              stdapi_railgun_*
+              stdapi_railgun_api
+              stdapi_railgun_memread
             ]
           }
         }
@@ -38,6 +39,11 @@ module FileInfo
       filepath,
       nil
     )['return']
+
+    if file_version_info_size == 0
+      # Indicates an error - should not continue
+      return nil
+    end
 
     buffer = session.railgun.kernel32.VirtualAlloc(
       nil,

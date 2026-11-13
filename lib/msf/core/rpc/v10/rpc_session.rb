@@ -56,12 +56,35 @@ class RPC_Session < RPC_Base
   end
 
 
-  # Stops a session.
+  # Stops a session - alias for killing a session in `msfconsole`
   #
   # @param [Integer] sid Session ID.
   # @raise [Msf::RPC::Exception] Unknown session ID.
   # @return [Hash] A hash indicating the action was successful. It contains the following key:
   #  * 'result' [String] A message that says 'success'.
+  # @example Here's how you would use this from the client:
+  #  # You have an active session, you run session list to view the session number, then pass that session number to the `stop` command:
+  # >> rpc.call('session.list')
+  #  {7=>
+  #   {"type"=>"meterpreter",
+  #    "tunnel_local"=>"192.168.xxx.xxx:4444",
+  #    "tunnel_peer"=>"192.168.xxx.xxx:64688",
+  #    "via_exploit"=>"exploit/windows/smb/ms17_010_eternalblue",
+  #    "via_payload"=>"payload/windows/x64/meterpreter/reverse_tcp",
+  #    "desc"=>"Meterpreter",
+  #    "info"=>"NT AUTHORITY\\SYSTEM @ DC1",
+  #    "workspace"=>"default",
+  #    "session_host"=>"192.168.xxx.xxx",
+  #    "session_port"=>445,
+  #    "target_host"=>"192.168.xxx.xxx",
+  #    "username"=>"foo",
+  #    "uuid"=>"h9pbmuoh",
+  #    "exploit_uuid"=>"tcjj1fqo",
+  #    "routes"=>"",
+  #    "arch"=>"x86",
+  #    "platform"=>"windows"}}
+  # >> rpc.call('session.stop', 7)
+  # => {"result"=>"success"}
   def rpc_stop( sid)
 
     s = self.framework.sessions[sid.to_i]
@@ -112,6 +135,7 @@ class RPC_Session < RPC_Base
   # @example Here's how you would use this from the client:
   #  rpc.call('session.shell_write', 2, "DATA")
   def rpc_shell_write( sid, data)
+    error(400, 'Data must be a String') unless data.is_a?(String)
     s = _valid_session(sid,"shell")
     begin
       res = s.shell_write(data)
@@ -140,7 +164,6 @@ class RPC_Session < RPC_Base
     { "result" => "success" }
   end
 
-
   # Reads the output from a meterpreter session (such as a command output).
   #
   # @note Multiple concurrent callers writing and reading the same Meterperter session can lead to
@@ -154,17 +177,43 @@ class RPC_Session < RPC_Base
   #  * 'data' [String] Data read.
   # @example Here's how you would use this from the client:
   #  rpc.call('session.meterpreter_read', 2)
-  def rpc_meterpreter_read( sid)
-    s = _valid_session(sid,"meterpreter")
-
-    if not s.user_output.respond_to? :dump_buffer
-      s.init_ui(Rex::Ui::Text::Input::Buffer.new, Rex::Ui::Text::Output::Buffer.new)
-    end
-
-    data = s.user_output.dump_buffer
-    { "data" => data }
+  # @deprecated in favour of #rpc_interactive_read
+  def rpc_meterpreter_read(sid)
+    rpc_interactive_read(sid)
   end
 
+  # Reads the output from an interactive session (meterpreter, DB sessions, SMB, shell, powershell)
+  #
+  # @note Multiple concurrent callers writing and reading the same Meterperter session can lead to
+  #  a conflict, where one caller gets the others output and vice versa. Concurrent access to a
+  #  Meterpreter session is best handled by post modules.
+  # @param [Integer] sid Session ID.
+  # @raise [Msf::RPC::Exception] An error that could be one of these:
+  #                              * 500 Unknown Session ID.
+  #                              * 500 Session doesn't support interactive operations.
+  #                              * 500 Session is disconnected.
+  # @return [Hash] It contains the following key:
+  #  * 'data' [String] Data read.
+  # @example Here's how you would use this from the client:
+  #  rpc.call('session.interactive_read', 2)
+  def rpc_interactive_read(sid)
+    session = _valid_interactive_session(sid)
+
+    if SHELL_SESSION_TYPES.include?(session.type)
+      begin
+        return { 'data' => session.shell_read.to_s }
+      rescue ::Exception => e
+        error(500, "Session Disconnected: #{e.class} #{e}")
+      end
+    end
+
+    unless session.user_output.respond_to?(:dump_buffer)
+      session.init_ui(Rex::Ui::Text::Input::Buffer.new, Rex::Ui::Text::Output::Buffer.new)
+    end
+
+    data = session.user_output.dump_buffer
+    { 'data' => data }
+  end
 
   # Reads from a session (such as a command output).
   #
@@ -203,6 +252,7 @@ class RPC_Session < RPC_Base
   # @example Here's how you would use this from the client:
   #  rpc.call('session.ring_put', 2, "DATA")
   def rpc_ring_put(sid, data)
+    error(400, 'Data must be a String') unless data.is_a?(String)
     s = _valid_session(sid,"ring")
     begin
       res = s.shell_write(data)
@@ -242,7 +292,6 @@ class RPC_Session < RPC_Base
     { "result" => "success" }
   end
 
-
   # Sends an input to a meterpreter prompt.
   # You may want to use #rpc_meterpreter_read to retrieve the output.
   #
@@ -259,25 +308,63 @@ class RPC_Session < RPC_Base
   # @see #rpc_meterpreter_run_single
   # @example Here's how you would use this from the client:
   #  rpc.call('session.meterpreter_write', 2, "sysinfo")
-  def rpc_meterpreter_write( sid, data)
-    s = _valid_session(sid,"meterpreter")
+  # @deprecated in favour of #rpc_interactive_write
+  def rpc_meterpreter_write(sid, data)
+    rpc_interactive_write(sid, data)
+  end
 
-    if not s.user_output.respond_to? :dump_buffer
-      s.init_ui(Rex::Ui::Text::Input::Buffer.new, Rex::Ui::Text::Output::Buffer.new)
+  # Sends an input to an interactive prompt (meterpreter, DB sessions, SMB, shell, powershell)
+  # You may want to use #rpc_interactive_read to retrieve the output.
+  # @note Multiple concurrent callers writing and reading the same Meterperter session can lead to
+  #       a conflict, where one caller gets the others output and vice versa. Concurrent access to
+  #       a Meterpreter session is best handled by post modules.
+  # @param [Integer] sid Session ID.
+  # @param [String]  data Input to the session prompt.
+  # @raise [Msf::RPC::Exception] An error that could be one of these:
+  #                              * 500 Unknown Session ID.
+  #                              * 500 Session doesn't support interactive operations.
+  #                              * 500 Session is disconnected.
+  # @return [Hash] A hash indicating the action was successful or not. It contains the following key:
+  #  * 'result' [String] Either 'success' or 'failure'.
+  # @example Here's how you would use this from the client:
+  # rpc.call('session.interactive_write', 2, "sysinfo")
+  def rpc_interactive_write(sid, data)
+    error(400, 'Data must be a String') unless data.is_a?(String)
+    session = _valid_interactive_session(sid)
+
+    if SHELL_SESSION_TYPES.include?(session.type)
+      begin
+        payload = data.end_with?("\n") ? data : "#{data}\n"
+        session.shell_write(payload)
+        return { 'result' => 'success' }
+      rescue ::Exception => e
+        error(500, "Session Disconnected: #{e.class} #{e}")
+      end
+    end
+
+    unless session.user_output.respond_to? :dump_buffer
+      session.init_ui(Rex::Ui::Text::Input::Buffer.new, Rex::Ui::Text::Output::Buffer.new)
     end
 
     interacting = false
-    s.channels.each_value do |ch|
-      interacting ||= ch.respond_to?('interacting') && ch.interacting
-    end
-    if interacting
-      s.user_input.put(data + "\n")
+    if session.respond_to? :channels
+      session.channels.each_value do |ch|
+        interacting ||= ch.respond_to?('interacting') && ch.interacting
+      end
     else
-      self.framework.threads.spawn("MeterpreterRunSingle", false, s) { |sess| sess.console.run_single(data) }
+      interacting = session.interacting
     end
-    { "result" => "success" }
-  end
 
+    if interacting
+      session.user_input.put(data + "\n")
+    else
+      framework.threads.spawn("InteractiveRunSingle-#{session.sid}-#{session.type}", false, session) do |s|
+        s.console.run_single(data)
+      end
+    end
+
+    { 'result' => 'success' }
+  end
 
   # Detaches from a meterpreter session. Serves the same purpose as [CTRL]+[Z].
   #
@@ -434,35 +521,62 @@ class RPC_Session < RPC_Base
   end
 
 
-  # Returns all the compatible post modules for this session.
+  # Returns all the compatible modules for this session.
   #
   # @param [Integer] sid Session ID.
-  # @return [Hash] Post modules. It contains the following key:
-  #  * 'modules' [Array<string>] An array of post module names. Example: ['post/windows/wlan/wlan_profile']
+  # @return [Hash] Modules. It contains the following key:
+  #  * 'modules' [Array<string>] An array of module names. Example: ['post/windows/wlan/wlan_profile', 'auxiliary/scanner/postgres_version', 'exploit/windows/local/alpc_taskscheduler']
   # @example Here's how you would use this from the client:
   #  rpc.call('session.compatible_modules', 3)
-  def rpc_compatible_modules( sid)
-    ret = []
+  def rpc_compatible_modules(sid)
+    session = self.framework.sessions[sid]
+    compatible_modules = []
 
-    mtype = "post"
-    names = self.framework.post.keys.map{ |x| "post/#{x}" }
-    names.each do |mname|
-      m = _find_module(mtype, mname)
-      next if not m.session_compatible?(sid)
-      ret << m.fullname
+    if session
+      session_type = session.type
+      search_params = { 'session_type' => [[session_type], []] }
+      cached_modules = Msf::Modules::Metadata::Cache.instance.find(search_params)
+
+      cached_modules.each do |cached_module|
+        m = _find_module(cached_module.type, cached_module.fullname)
+        compatible_modules << m.fullname if m.session_compatible?(sid)
+      end
     end
-    { "modules" => ret }
+
+    { "modules" => compatible_modules }
   end
 
-private
+  private
 
-  def _find_module(mtype,mname)
-    mod = self.framework.modules.create(mname)
-    if(not mod)
-      error(500, "Invalid Module")
-    end
+  INTERACTIVE_SESSION_TYPES = %w[
+    meterpreter
+    mssql
+    postgresql
+    mysql
+    smb
+    ldap
+    shell
+    powershell
+  ].freeze
+
+  SHELL_SESSION_TYPES = %w[shell powershell].freeze
+
+  def _find_module(_mtype, mname)
+    mod = framework.modules.create(mname)
+    error(500, 'Invalid Module') if mod.nil?
 
     mod
+  end
+
+  def _valid_interactive_session(sid)
+    session = framework.sessions[sid.to_i]
+    error(500, "Unknown Session ID #{sid}") if session.nil?
+
+    unless INTERACTIVE_SESSION_TYPES.include?(session.type)
+      error(500, "`interactive_read` and `interactive_write` not available for #{session.type} sessions")
+    end
+
+    session
   end
 
   def _valid_session(sid,type)
@@ -487,4 +601,3 @@ private
 end
 end
 end
-

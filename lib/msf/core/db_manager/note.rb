@@ -68,7 +68,7 @@ module Msf::DBManager::Note
   #
   # The +:update+ option can have the following values:
   # +:unique+::       allow only a single Note per +:host+/+:type+ pair
-  # +:unique_data+::  like +:uniqe+, but also compare +:data+
+  # +:unique_data+::  like +:unique+, but also compare +:data+
   # +:insert+::       always insert a new Note even if one with identical values exists
   #
   # If the provided +:host+ is an IP address and does not exist in the
@@ -143,6 +143,16 @@ module Msf::DBManager::Note
     end
 
     ntype  = opts.delete(:type) || opts.delete(:ntype) || (raise RuntimeError, "A note :type or :ntype is required")
+
+    has_valid_note_datatype = opts[:data].is_a?(Hash) || opts[:data].nil?
+    unless has_valid_note_datatype
+      stack_trace = caller.map { |line| "[-]   #{line}" }.join("\n")
+      message = "\n[-] [DEPRECATION] Using #{__method__} with a non-hash data value is deprecated, please raise a Github issue with this output.\n[-] Call stack:\n#{stack_trace}"
+      warn(message)
+      # Additionally write to ~/.msf4/logs/framework.log - as this gets attached to GitHub issues etc
+      elog(message)
+    end
+
     data   = opts[:data]
     note   = nil
 
@@ -191,7 +201,7 @@ module Msf::DBManager::Note
     if opts[:vuln_id]
       note.vuln_id = opts[:vuln_id]
     end
-    msf_import_timestamps(opts,note)
+    msf_assign_timestamps(opts, note)
     note.save!
     ret[:note] = note
   }

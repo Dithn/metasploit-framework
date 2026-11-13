@@ -24,7 +24,7 @@ class MetasploitModule < Msf::Post
         'SessionTypes' => ['meterpreter'],
         'Author' => ['theLightCosine'],
         'References' => [
-          [ 'URL', 'http://pauldotcom.com/2011/11/safely-dumping-hashes-from-liv.html' ]
+          [ 'URL', 'https://web.archive.org/web/20201111212952/https://securityweekly.com/2011/11/02/safely-dumping-hashes-from-liv/' ]
         ],
         'Actions' => [
           [ 'VSS_CREATE', { 'Description' => 'Create a new VSS copy' } ],
@@ -34,7 +34,19 @@ class MetasploitModule < Msf::Post
           [ 'VSS_GET_INFO', { 'Description' => 'Get VSS information' } ],
           [ 'VSS_SET_MAX_STORAGE_SIZE', { 'Description' => 'Set the VSS maximum storage size' } ]
         ],
-        'DefaultAction' => 'VSS_GET_INFO'
+        'DefaultAction' => 'VSS_GET_INFO',
+        'Compat' => {
+          'Meterpreter' => {
+            'Commands' => %w[
+              stdapi_fs_delete_dir
+            ]
+          }
+        },
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'Reliability' => [],
+          'SideEffects' => [CONFIG_CHANGES, ARTIFACTS_ON_DISK]
+        }
       )
     )
 

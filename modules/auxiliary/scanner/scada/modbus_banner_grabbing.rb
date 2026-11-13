@@ -20,18 +20,21 @@ class MetasploitModule < Msf::Auxiliary
           published by Modicon (now Schneider Electric) in 1979 for use with its
           programmable logic controllers (PLCs).
         },
-        'Author' =>
-        [
+        'Author' => [
           'Juan Escobar <juan[at]null-life.com>', # @itsecurityco
           'Ezequiel Fernandez' # @capitan_alfa
         ],
-        'References' =>
-        [
+        'References' => [
           [ 'URL', 'https://modbus.org/docs/Modbus_Messaging_Implementation_Guide_V1_0b.pdf' ],
           [ 'URL', 'https://en.wikipedia.org/wiki/Modbus#Modbus_TCP_frame_format_(primarily_used_on_Ethernet_networks)' ],
           [ 'URL', 'https://github.com/industrialarmy/Hello_Proto' ],
         ],
-        'License' => MSF_LICENSE
+        'License' => MSF_LICENSE,
+        'Notes' => {
+          'Stability' => [CRASH_SAFE],
+          'SideEffects' => [IOC_IN_LOGS],
+          'Reliability' => []
+        }
       )
     )
 
@@ -59,7 +62,7 @@ class MetasploitModule < Msf::Auxiliary
     when "\xab\x06"
       print_error('Slave Device Busy: Slave is engaged in processing a long-duration program command.')
     when "\xab\x07"
-      print_error('Negative Acknowledge: Slave cannot perform the programming function recieved in the query.')
+      print_error('Negative Acknowledge: Slave cannot perform the programming function received in the query.')
     when "\xab\x08"
       print_error('Memory Parity Error: Slave detected a parity error in memory.')
     when "\xab\x0a"
@@ -162,7 +165,7 @@ class MetasploitModule < Msf::Auxiliary
           port: rport,
           sname: 'modbus',
           type: "modbus.#{object['name'].downcase}",
-          data: object['str_value']
+          data: { modbus_object: object['str_value'] }
         )
       end
     rescue ::Interrupt

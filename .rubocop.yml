@@ -9,24 +9,40 @@
 # inherit_from: .rubocop_todo.yml
 
 AllCops:
-  TargetRubyVersion: 2.5
+  TargetRubyVersion: 3.2
   SuggestExtensions: false
   NewCops: disable
 
 require:
   - ./lib/rubocop/cop/layout/module_hash_on_new_line.rb
+  - ./lib/rubocop/cop/layout/module_hash_values_on_same_line.rb
   - ./lib/rubocop/cop/layout/module_description_indentation.rb
   - ./lib/rubocop/cop/layout/extra_spacing_with_bindata_ignored.rb
   - ./lib/rubocop/cop/lint/module_disclosure_date_format.rb
   - ./lib/rubocop/cop/lint/module_disclosure_date_present.rb
   - ./lib/rubocop/cop/lint/deprecated_gem_version.rb
   - ./lib/rubocop/cop/lint/module_enforce_notes.rb
+  - ./lib/rubocop/cop/lint/detect_invalid_pack_directives.rb
+  - ./lib/rubocop/cop/lint/detect_metadata_trailing_leading_whitespace.rb
+  - ./lib/rubocop/cop/lint/detect_outdated_cmd_exec_api.rb
+  - ./lib/rubocop/cop/lint/datastore_srvhost_usage.rb
+  - ./lib/rubocop/cop/lint/bare_check_code_in_non_exploit.rb
+  - ./lib/rubocop/cop/lint/check_code_missing_reason.rb
+  - ./lib/rubocop/cop/lint/module_redundant_arch_platform.rb
+  - ./lib/rubocop/cop/lint/redundant_peer_in_print.rb
+  - ./lib/rubocop/cop/lint/module_missing_autocheck.rb
+  - ./lib/rubocop/cop/lint/module_missing_rank.rb
+  - ./lib/rubocop/cop/lint/module_default_payload.rb
+  - ./lib/rubocop/cop/lint/module_duplicate_option.rb
+  - ./lib/rubocop/cop/lint/module_http_fingerprint.rb
+  - ./lib/rubocop/cop/lint/module_defanged_mode_description.rb
+
+Lint/CheckCodeMissingReason:
+  Enabled: true
+  Severity: info
 
 Layout/SpaceBeforeBrackets:
-  Description: >-
-    Disabled as it generates invalid code:
-      https://github.com/rubocop-hq/rubocop/issues/9499
-  Enabled: false
+  Enabled: true
 
 Lint/AmbiguousAssignment:
   Enabled: true
@@ -78,6 +94,17 @@ Lint/UnexpectedBlockArity:
 Lint/UnmodifiedReduceAccumulator:
   Enabled: true
 
+Lint/UnusedMethodArgument:
+  Description: >-
+    Disabled on files under the lib/ directory (aka library files)
+    as this can break YARD documentation since YARD doesn't recognize
+    the _ prefix before parameter names and thinks its a different argument.
+    See https://github.com/rapid7/metasploit-framework/pull/17735
+    Also see https://github.com/rubocop/rubocop/pull/11020
+  Enabled: true
+  Exclude:
+    - 'lib/**/*'
+
 Style/ArgumentsForwarding:
   Enabled: true
 
@@ -102,6 +129,12 @@ Style/DocumentDynamicEvalDefinition:
 
 Style/EndlessMethod:
   Enabled: true
+
+Style/FormatStringToken:
+  Enabled: true
+  Exclude:
+  # We aren't ready to enable this for modules yet
+    - 'modules/**/*'
 
 Style/HashExcept:
   Enabled: true
@@ -142,13 +175,36 @@ Style/RedundantAssignment:
     and return expression
   Enabled: false
 
+Style/RedundantParentheses:
+  Description: >-
+    Disabled as it sometimes improves the readability of code
+  Enabled: false
+
+Style/RedundantRegexpArgument:
+  Enabled: true
+  Exclude:
+  # We aren't ready to enable this for modules yet
+    - 'modules/**/*'
+
 Style/SwapValues:
+  Enabled: false
+
+Layout/LineContinuationLeadingSpace:
+  Description: >-
+    Disabled as it sometimes improves the readability of code having leading spaces
+    for indented code strings.
   Enabled: false
 
 Layout/ModuleHashOnNewLine:
   Enabled: true
 
+Layout/ModuleHashValuesOnSameLine:
+  Enabled: true
+
 Layout/ModuleDescriptionIndentation:
+  Enabled: true
+
+Lint/DetectInvalidPackDirectives:
   Enabled: true
 
 Lint/ModuleDisclosureDateFormat:
@@ -166,16 +222,30 @@ Lint/ModuleEnforceNotes:
     - 'modules/auxiliary/**/*'
     - 'modules/post/**/*'
 
+Lint/ModuleRedundantArchPlatform:
+  Enabled: true
+  Include:
+    - 'modules/**/*'
+
+Lint/RedundantPeerInPrint:
+  Enabled: true
+  Severity: warning
+  Description: 'The framework auto-prepends host:port via print_prefix. Do not manually include #{peer}, #{rhost}:#{rport}, or #{Rex::Socket.to_authority(rhost, rport)} at the start of print messages.'
+  Include:
+    - 'modules/**/*'
+
 Lint/DeprecatedGemVersion:
   Enabled: true
   Exclude:
     - 'metasploit-framework.gemspec'
 
-Metrics/ClassLength:
+Metrics/ModuleLength:
   Description: 'Most Metasploit modules are quite large. This is ok.'
-  Enabled: true
-  Exclude:
-    - 'modules/**/*'
+  Enabled: false
+
+Metrics/ClassLength:
+  Description: 'Most Metasploit classes are quite large. This is ok.'
+  Enabled: false
 
 Style/ClassAndModuleChildren:
   Enabled: false
@@ -209,6 +279,10 @@ Style/TernaryParentheses:
   Description: 'This outright produces bugs'
 
 Style/FrozenStringLiteralComment:
+  Enabled: false
+  Description: 'We cannot support this yet without a lot of things breaking'
+
+Style/MutableConstant:
   Enabled: false
   Description: 'We cannot support this yet without a lot of things breaking'
 
@@ -248,11 +322,24 @@ Style/NumericPredicate:
   Description: 'This adds no efficiency nor space saving'
   Enabled: false
 
+Style/EvenOdd:
+  Description: 'This adds no efficiency nor space saving'
+  Enabled: false
+
+Style/FloatDivision:
+  Description: 'Not a safe rule to run on Metasploit without manual verification as the right hand side may be a string'
+  Enabled: false
+
+Style/FormatString:
+  Description: 'Not a safe rule to run on Metasploit without manual verification that the format is not redefined/shadowed'
+  Enabled: false
+
 Style/Documentation:
   Enabled: true
   Description: 'Most Metasploit modules do not have class documentation.'
   Exclude:
     - 'modules/**/*'
+    - 'test/modules/**/*'
     - 'spec/file_fixtures/modules/**/*'
 
 Layout/FirstArgumentIndentation:
@@ -344,6 +431,191 @@ Naming/MethodParameterName:
   Description: 'Whoever made this requirement never looked at crypto methods, IV'
   MinNameLength: 2
 
+Naming/PredicateName:
+  Enabled: true
+  # Current methods that break the rule, so that we don't add additional methods that break the convention
+  AllowedMethods:
+    - has_additional_info?
+    - has_advanced_options?
+    - has_auth
+    - has_auto_target?
+    - has_bad_activex?
+    - has_badchars?
+    - has_chars?
+    - has_check?
+    - has_command?
+    - has_content_type_extension?
+    - has_datastore_cred?
+    - has_evasion_options?
+    - has_fatal_errors?
+    - has_fields
+    - has_files?
+    - has_flag?
+    - has_function_name?
+    - has_gcc?
+    - has_h2_headings
+    - has_input_name?
+    - has_j_security_check?
+    - has_key?
+    - has_match?
+    - has_module
+    - has_object_ref
+    - has_objects_list
+    - has_options?
+    - has_page?
+    - has_passphrase?
+    - has_pid?
+    - has_pkt_line_data?
+    - has_prereqs?
+    - has_privacy_waiver?
+    - has_privates?
+    - has_protected_mode_prompt?
+    - has_proxy?
+    - has_read_data?
+    - has_ref?
+    - has_required_args
+    - has_required_module_options?
+    - has_requirements
+    - has_rop?
+    - has_s_flag?
+    - has_service_cred?
+    - has_subscriber?
+    - has_subtree?
+    - has_text
+    - has_tlv?
+    - has_u_flag?
+    - has_users?
+    - has_vuln?
+    - has_waiver?
+    - have_auth_error?
+    - have_powershell?
+    - is_accessible?
+    - is_admin?
+    - is_alive?
+    - is_alpha_web_server?
+    - is_android?
+    - is_app_binom3?
+    - is_app_carlogavazzi?
+    - is_app_cnpilot?
+    - is_app_epaduo?
+    - is_app_epmp1000?
+    - is_app_infovista?
+    - is_app_ironport?
+    - is_app_metweblog?
+    - is_app_oilom?
+    - is_app_openmind?
+    - is_app_popad?
+    - is_app_radware?
+    - is_app_rfreader?
+    - is_app_sentry?
+    - is_app_sevone?
+    - is_app_splunk?
+    - is_app_ssl_vpn?
+    - is_array_type?
+    - is_auth_required?
+    - is_author_blacklisted?
+    - is_badchar
+    - is_base64?
+    - is_bind?
+    - is_cached_size_accurate?
+    - is_cgi_enabled?
+    - is_cgi_exploitable?
+    - is_check_interesting?
+    - is_child_of?
+    - is_clr_enabled
+    - is_connect?
+    - is_dlink?
+    - is_dn?
+    - is_dynamic?
+    - is_error_code
+    - is_exception?
+    - is_exploit_module?
+    - is_exploitable?
+    - is_fqdn?
+    - is_glob?
+    - is_groupwise?
+    - is_guest_mode_enabled?
+    - is_hash_from_empty_pwd?
+    - is_high_integrity?
+    - is_hostname?
+    - is_ie?
+    - is_imc?
+    - is_imc_som?
+    - is_in_admin_group?
+    - is_interface?
+    - is_ip_targeted?
+    - is_key_wanted?
+    - is_leaf?
+    - is_local?
+    - is_logged_in?
+    - is_loggedin
+    - is_loopback_address?
+    - is_mac?
+    - is_match
+    - is_md5_format?
+    - is_module_arch?
+    - is_module_platform?
+    - is_module_wanted?
+    - is_multi_platform_exploit?
+    - is_not_null?
+    - is_null_pointer
+    - is_null_pointer?
+    - is_num?
+    - is_num_type?
+    - is_numeric
+    - is_online?
+    - is_parseable
+    - is_pass_ntlm_hash?
+    - is_passwd_method?
+    - is_password_required?
+    - is_payload_compatible?
+    - is_payload_platform_compatible?
+    - is_pointer_type?
+    - is_pri_key?
+    - is_proficy?
+    - is_rdp_up
+    - is_remote_exploit?
+    - is_resource_taken?
+    - is_rf?
+    - is_rmi?
+    - is_root?
+    - is_routable?
+    - is_running?
+    - is_scan_complete
+    - is_secure_admin_disabled?
+    - is_session_type?
+    - is_signature_correct?
+    - is_single_object?
+    - is_struct_type?
+    - is_supermicro?
+    - is_superuser?
+    - is_sws?
+    - is_system?
+    - is_system_user?
+    - is_target?
+    - is_target_suitable?
+    - is_trial_enabled?
+    - is_trustworthy
+    - is_uac_enabled?
+    - is_url_alive
+    - is_usable?
+    - is_uuid?
+    - is_valid?
+    - is_valid_bus?
+    - is_valid_snmp_value
+    - is_value_wanted?
+    - is_version_compat?
+    - is_version_tested?
+    - is_vmware?
+    - is_vul
+    - is_vulnerable?
+    - is_warbird?
+    - is_windows?
+    - is_writable
+    - is_writable?
+    - is_x86?
+    - is_zigbee_hwbridge_session?
+
 # %q() is super useful for long strings split over multiple lines and
 # is very common in module constructors for things like descriptions
 Style/RedundantPercentQ:
@@ -429,3 +701,79 @@ Style/UnpackFirst:
     Disabling to make it easier to copy/paste `unpack('h*')` expressions from code
     into a debugging REPL.
   Enabled: false
+
+Lint/DetectMetadataTrailingLeadingWhitespace:
+  Enabled: true
+
+Lint/DetectOutdatedCmdExecApi:
+  Description: >-
+    Detects outdated usage of cmd_exec with separate arguments.
+    Use `create_process(executable, args: [], time_out: 15, opts: {})` API with an args array instead.
+  Enabled: true
+
+Lint/BareCheckCodeInNonExploit:
+  Description: >-
+    Use Exploit::CheckCode instead of bare CheckCode in non-exploit modules.
+    Bare CheckCode will raise a NameError at runtime in auxiliary, post, and evasion modules
+    because CheckCode is defined inside Msf::Exploit which is not in their ancestor chain.
+  Enabled: true
+  Include:
+    - 'modules/auxiliary/**/*'
+    - 'modules/post/**/*'
+    - 'modules/evasion/**/*'
+
+Lint/ModuleMissingAutocheck:
+  Description: >-
+    Modules with a check method should prepend Msf::Exploit::Remote::AutoCheck
+    so users can verify vulnerability before exploitation.
+  Enabled: true
+  Severity: info
+  Include:
+    - 'modules/exploits/**/*'
+    - 'modules/auxiliary/**/*'
+
+Lint/ModuleMissingRank:
+  Description: >-
+    Exploit modules should declare an explicit Rank. A missing Rank silently
+    defaults to NormalRanking, so it never fails to load and is easy to ship
+    unset. Choose a value from lib/msf/core/constants.rb.
+  Enabled: true
+  Severity: warning
+  Include:
+    - 'modules/exploits/**/*'
+
+Lint/ModuleDefaultPayload:
+  Description: >-
+    Do not hardcode a default PAYLOAD in DefaultOptions.
+    Let the framework choose the most appropriate payload automatically.
+  Enabled: true
+  Severity: warning
+  Include:
+    - 'modules/**/*'
+
+Lint/ModuleDuplicateOption:
+  Description: >-
+    Do not register an option supplied by a mixin just to change its default value.
+    Set the value in the module's DefaultOptions metadata instead.
+  Enabled: true
+  Severity: warning
+  Include:
+    - 'modules/**/*'
+
+Lint/ModuleHttpFingerprint:
+  Description: >-
+    HttpFingerprint is a legacy passive fingerprinting mechanism.
+    Use a check method with AutoCheck instead.
+  Enabled: true
+  Severity: info
+  Include:
+    - 'modules/**/*'
+
+Lint/ModuleDefangedModeDescription:
+  Description: >-
+    Explain the module-specific risk prevented by DefangedMode in its datastore
+    option description. Document the same reason in the module documentation.
+  Enabled: true
+  Severity: warning
+  Include:
+    - 'modules/**/*'
